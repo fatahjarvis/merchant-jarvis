@@ -24,6 +24,8 @@ import {
   ChevronRight
 } from 'lucide-react';
 
+const MJARVIS_SHOWROOM = 'https://jarvismu.com';
+
 interface MenuScreenProps {
   onOpenAuth: () => void;
   onOpenPWAInstall: () => void;
