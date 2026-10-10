@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isMember(membersList) {
+      return isAuthenticated() && (request.auth.uid in membersList);
+    }
+
+    function isChairmanOperator() {
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/app_settings/authorized_operators) &&
+        (
+          request.auth.uid in get(/databases/$(database)/documents/app_settings/authorized_operators).data.operators ||
+          request.auth.token.email.lower() in get(/databases/$(database)/documents/app_settings/authorized_operators).data.operators
+        )
+      );
+    }
+
+    // App Settings & Authorized Operators
+    match /app_settings/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isChairmanOperator();
+    }
+
+    // Merchant Profile tenancy: merchant_profile/{mid}
+    match /merchant_profile/{mid} {
+      allow read: if isAuthenticated() && (isMember(resource.data.members) || isChairmanOperator());
+      allow create: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (isMember(resource.data.members) || isChairmanOperator());
+    }
+
+    // Tenancy: orders/{mid}/order_items/{orderId}
+    match /orders/{mid}/order_items/{orderId} {
+      allow read: if isAuthenticated() && (
+        isMember(get(/databases/$(database)/documents/merchant_profile/$(mid)).data.members) ||
+        isChairmanOperator()
+      );
+      allow write: if isAuthenticated() && (
+        isMember(get(/databases/$(database)/documents/merchant_profile/$(mid)).data.members) ||
+        isChairmanOperator()
+      );
+    }
+
+    // Tenancy: ledger/{mid}/ledger_items/{ledgerId}
+    match /ledger/{mid}/ledger_items/{ledgerId} {
+      allow read: if isAuthenticated() && (
+        isMember(get(/databases/$(database)/documents/merchant_profile/$(mid)).data.members) ||
+        isChairmanOperator()
+      );
+      allow write: if isAuthenticated() && (
+        isMember(get(/databases/$(database)/documents/merchant_profile/$(mid)).data.members) ||
+        isChairmanOperator()
+      );
+    }
+
+    // Tenancy: Single doc day-book: ledger_days/{dayDocId}
+    match /ledger_days/{dayDocId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Mail Outbox for Estate Mailer: mail_outbox/{mailId}
+    match /mail_outbox/{mailId} {
+      allow create: if isAuthenticated();
+      allow read, update: if isAuthenticated() && (
+        resource.data.merchantId == request.auth.uid || 
+        isChairmanOperator()
+      );
+    }
+  }
+}

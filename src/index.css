@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #030712;
+    color: #f1f5f9;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* Force monospace on tabular and financial figures */
+  .font-mono,
+  .tabular-nums,
+  [data-mono="true"] {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Safe areas for iOS home indicator and notch */
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  .safe-top {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+}
+
+/* OLED dark custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #030712;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #06b6d4;
+}
+
+/* Pulsing radar animation for Push-to-Talk Orb */
+@keyframes orb-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.7), 0 0 20px rgba(6, 182, 212, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 20px rgba(6, 182, 212, 0), 0 0 40px rgba(6, 182, 212, 0.2);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(6, 182, 212, 0), 0 0 10px rgba(6, 182, 212, 0);
+  }
+}
+
+.animate-orb-listening {
+  animation: orb-pulse 1.8s infinite;
+}
