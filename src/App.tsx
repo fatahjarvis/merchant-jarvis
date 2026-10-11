@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { PublicShopScreen } from './screens/PublicShopScreen';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { Header } from './components/Header';
 import { BottomTabBar } from './components/BottomTabBar';
@@ -49,8 +51,14 @@ function MerchantJarvisMain() {
     addNewStockItem,
     pendingCloudMerge,
     confirmCloudMerge,
-    cancelCloudMerge
+    cancelCloudMerge,
+    privacyConsentGiven,
+    setPrivacyConsentGiven,
+    cloudChoice,
+    user
   } = useStore();
+  
+  const [consentChecked, setConsentChecked] = useState(false);
   
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -134,6 +142,56 @@ function MerchantJarvisMain() {
 
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col font-sans select-none antialiased">
+      {/* Privacy Consent Modal (First-launch / Posture change) */}
+      {!privacyConsentGiven && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-cyan-800/80 rounded-2xl max-w-md w-full p-6 space-y-4 animate-in fade-in shadow-2xl">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 font-bold">
+                🔒
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-cyan-300 uppercase tracking-wide">Data Privacy & Posture Consent</h2>
+                <span className="text-[10px] font-mono text-slate-400 uppercase">Posture: {cloudChoice}</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 text-xs text-slate-300 leading-relaxed max-h-56 overflow-y-auto font-sans">
+              {cloudChoice === 'local_only' && "Merchant Jarvis stores your shop's records only on this device. Logixtix Marketing Ltd collects nothing from your shop book. Minimal technical telemetry (app health counters) may be sent to keep the app reliable; you can switch it off in Settings. Your data stays yours: export or erase it anytime from Menu → Privacy & Data."}
+              {cloudChoice === 'estate' && "Your shop's records travel encrypted and rest in the estate's secure cloud (Singapore region). Logixtix Marketing Ltd acts as processor; you remain controller of your customers' details. We collect only what the shop needs: shop profile, contact details, orders, ledger and stock records, plus minimal off-able telemetry. Export or erase your drawer anytime. Rights under the Data Protection Act 2017 (Mauritius) apply."}
+              {cloudChoice === 'custom' && "Your shop's records live in YOUR own cloud account. Logixtix Marketing Ltd stores nothing of your shop book; we keep only your contact details for support and licensing, plus minimal off-able telemetry. You control retention and access entirely."}
+            </div>
+
+            <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                checked={consentChecked}
+                onChange={e => setConsentChecked(e.target.checked)}
+                className="mt-0.5 rounded bg-slate-950 border-slate-700 text-cyan-500 w-4 h-4 shrink-0"
+              />
+              <span className="text-xs text-slate-200 font-medium leading-snug">
+                I understand and agree to this data posture. (Guest users tick the Local Only notice; no tick, no entry).
+              </span>
+            </label>
+
+            <button
+              disabled={!consentChecked}
+              onClick={() => {
+                setPrivacyConsentGiven(true);
+                setConsentChecked(false);
+                if (!user) {
+                  setIsAuthOpen(true);
+                }
+              }}
+              className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition ${
+                consentChecked ? 'bg-cyan-600 hover:bg-cyan-500 text-white cursor-pointer' : 'bg-slate-900 text-slate-600 cursor-not-allowed border border-slate-800'
+              }`}
+            >
+              Enter Shop
+            </button>
+          </div>
+        </div>
+      )}
       {/* Offline Toast Banner if disconnected */}
       {!isOnline && (
         <div className="bg-amber-500 text-slate-950 font-bold px-4 py-1.5 text-xs flex items-center justify-center gap-1.5 z-50">
@@ -340,7 +398,12 @@ function MerchantJarvisMain() {
 export default function App() {
   return (
     <StoreProvider>
-      <MerchantJarvisMain />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/shop/:slug" element={<PublicShopScreen />} />
+          <Route path="*" element={<MerchantJarvisMain />} />
+        </Routes>
+      </BrowserRouter>
     </StoreProvider>
   );
 }

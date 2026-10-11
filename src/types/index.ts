@@ -227,3 +227,34 @@ export interface QueuedSyncAction {
   payload: Record<string, unknown>;
   queuedAt: string;
 }
+
+export interface CloudSnapshot {
+  id: string;
+  merchantId: string;
+  date: string; // YYYY-MM-DD
+  ordersCount: number;
+  ledgerCount: number;
+  stockCount: number;
+  payload: {
+    orders: any[];
+    ledgerEntries: any[];
+    stockItems: any[];
+    profile: any;
+  };
+  createdAt: string;
+}
+
+export type LicenceTier = 'FREE_PILOT' | 'COMMERCIAL_BASIC' | 'COMMERCIAL_PRO';
+export type LicenceState = 'NONE' | 'FREE_PILOT' | 'ACTIVE' | 'QUEUED' | 'EXPIRED';
+
+export interface LicenceKeyPayload {
+  product: string;
+  tier: LicenceTier;
+  seats: number;
+  skuCap: number;
+  shops: number;
+  org: string;
+  issuedAt: string;
+  expiry: string;
+}
+

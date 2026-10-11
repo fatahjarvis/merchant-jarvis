@@ -229,7 +229,22 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       </div>
 
       {/* Day Pulse Summary Cards */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2">
+        {/* Online Orders */}
+        <div 
+          onClick={() => onSelectTab('orders')}
+          className="bg-slate-900/80 hover:bg-slate-900 border border-emerald-900/60 rounded-xl p-3 cursor-pointer transition"
+        >
+          <div className="flex items-center justify-between text-slate-400 mb-1">
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            <span className="text-[10px] text-emerald-400 font-mono">NEW</span>
+          </div>
+          <span className="font-mono text-xl font-bold text-emerald-300 block tabular-nums">
+            0
+          </span>
+          <span className="text-[11px] text-slate-400">Online Orders</span>
+        </div>
+
         {/* Open Orders */}
         <div 
           onClick={() => onSelectTab('orders')}
@@ -244,7 +259,9 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           </span>
           <span className="text-[11px] text-slate-400">Open Orders</span>
         </div>
-
+      </div>
+      
+      <div className="grid grid-cols-2 gap-2">
         {/* Deliveries Due Today */}
         <div 
           onClick={() => onSelectTab('orders')}

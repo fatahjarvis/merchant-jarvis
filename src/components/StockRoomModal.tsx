@@ -107,6 +107,14 @@ export const StockRoomModal: React.FC<StockRoomModalProps> = ({
             <Camera className="w-4 h-4 text-cyan-400" />
             <span>DOOR 2: Photo Sheet</span>
           </button>
+
+          <button
+            className="col-span-2 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-850 border border-cyan-900/60 text-slate-100 text-xs font-semibold active:scale-95 transition"
+            style={{ minHeight: '44px' }}
+          >
+            <Layers className="w-4 h-4 text-cyan-400" />
+            <span>PUBLISH MENU (OFF)</span>
+          </button>
         </div>
 
         {/* Tab switch between Inventory & Movements */}

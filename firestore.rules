@@ -71,5 +71,24 @@ service cloud.firestore {
         isChairmanOperator()
       );
     }
+
+    // Public Menus: menus/{mid}/public_menu
+    match /menus/{mid}/public_menu {
+      allow read: if true;
+      allow write: if isAuthenticated() && (
+        isMember(get(/databases/$(database)/documents/merchant_profile/$(mid)).data.members) ||
+        isChairmanOperator()
+      );
+    }
+
+    // Online Orders: online_orders/{orderId}
+    match /online_orders/{orderId} {
+      allow create: if request.resource.data.size() <= 4096 && 
+                       request.resource.data.keys().hasOnly(['mid', 'customerName', 'customerPhone', 'lines', 'total', 'status', 'createdAt', 'source']);
+      allow read, update: if isAuthenticated() && (
+        isMember(get(/databases/$(database)/documents/merchant_profile/$(resource.data.mid)).data.members) ||
+        isChairmanOperator()
+      );
+    }
   }
 }

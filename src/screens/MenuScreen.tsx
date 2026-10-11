@@ -22,8 +22,15 @@ import {
   Package,
   Layers,
   ChevronRight,
-  Smartphone
+  Smartphone,
+  Activity,
+  Terminal,
+  Database,
+  Upload,
+  Trash2,
+  Lock
 } from 'lucide-react';
+import { verifyDevicePin } from '../utils/security';
 
 interface MenuScreenProps {
   onOpenAuth: () => void;
@@ -71,8 +78,48 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
     setCloudChoiceMode,
     probeCustomCloudConfig,
     deviceSessions,
-    signOutElsewhere
+    signOutElsewhere,
+    syncLatencyMs,
+    storagePayloadKb,
+    cloudSnapshots,
+    downloadBackup,
+    restoreBackup,
+    restoreCloudSnapshot,
+    resetShopData,
+    factoryResetShop,
+    exportDrawer,
+    eraseDrawer,
+    telemetryEnabled,
+    toggleTelemetry,
+    licenceKey,
+    licenceState,
+    activateLicence,
+    deleteLicence
   } = useStore();
+
+  const [autoRefreshDiagnostics, setAutoRefreshDiagnostics] = useState(false);
+  const [compressedBackup, setCompressedBackup] = useState(true);
+
+  const [eraseModalOpen, setEraseModalOpen] = useState(false);
+  const [eraseTypedErase, setEraseTypedErase] = useState('');
+  const [erasePin, setErasePin] = useState('');
+  const [eraseError, setEraseError] = useState<string | null>(null);
+
+  const [licensingModalOpen, setLicensingModalOpen] = useState(false);
+  const [licencePaste, setLicencePaste] = useState('');
+  const [licenceError, setLicenceError] = useState<string | null>(null);
+
+  const [restoreModalOpen, setRestoreModalOpen] = useState(false);
+  const [restoreStaging, setRestoreStaging] = useState<{ rawContent: string | ArrayBuffer; isCompressed: boolean; summary?: string } | null>(null);
+  const [restorePin, setRestorePin] = useState('');
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreSuccess, setRestoreSuccess] = useState<string | null>(null);
+
+  const [dangerModalOpen, setDangerModalOpen] = useState(false);
+  const [dangerActionType, setDangerActionType] = useState<'reset_shop' | 'factory_reset' | null>(null);
+  const [dangerTypedReset, setDangerTypedReset] = useState('');
+  const [dangerPin, setDangerPin] = useState('');
+  const [dangerError, setDangerError] = useState<string | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [shopName, setShopName] = useState(profile.shopName);
@@ -801,6 +848,540 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
         </button>
       </div>
 
+      {/* Licensing Door */}
+      <div className="bg-[#070e1c] border border-slate-850 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-teal-400">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Licensing</h3>
+          </div>
+          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+            licenceState === 'ACTIVE' ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-slate-800 text-slate-400'
+          }`}>
+            {licenceState}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Status: {licenceKey?.tier || 'FREE_PILOT'} tier · {licenceKey ? 'Active' : 'Grace Period'}
+        </p>
+        <button
+          onClick={() => setLicensingModalOpen(true)}
+          className="w-full p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold text-teal-300 transition"
+        >
+          Manage Licence
+        </button>
+      </div>
+
+      {/* Licensing Modal */}
+      {licensingModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-teal-900 rounded-2xl max-w-md w-full p-5 space-y-4 animate-in fade-in">
+            <h3 className="text-sm font-bold text-teal-400">Licensing Door</h3>
+            <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-xs font-mono text-slate-200">
+              <div>Tier: {licenceKey?.tier || 'FREE_PILOT'}</div>
+              <div>Organisation: {licenceKey?.org || '—'}</div>
+              <div>Expiry: {licenceKey?.expiry || '—'}</div>
+            </div>
+            <input
+              type="text"
+              value={licencePaste}
+              onChange={e => setLicencePaste(e.target.value)}
+              placeholder="Paste MJV Key..."
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs font-mono text-slate-100 outline-none"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setLicensingModalOpen(false)}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-bold"
+              >
+                Close
+              </button>
+              <button
+                onClick={async () => {
+                  const success = await activateLicence(licencePaste);
+                  if (success) {
+                    setLicensingModalOpen(false);
+                    alert("Licence activated!");
+                  } else {
+                    setLicenceError("Invalid licence key.");
+                  }
+                }}
+                className="flex-1 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold"
+              >
+                Activate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 1. Shop Diagnostics Room */}
+      <div className="bg-[#070e1c] border border-cyan-900/60 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400">
+              <Activity className="w-4 h-4" />
+            </div>
+            <h3 className="text-xs font-bold text-cyan-300 uppercase tracking-wider">Shop Diagnostics Room</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] text-slate-400 flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoRefreshDiagnostics}
+                onChange={e => setAutoRefreshDiagnostics(e.target.checked)}
+                className="rounded bg-slate-900 border-slate-700 text-cyan-500"
+              />
+              Auto-refresh
+            </label>
+            <button
+              onClick={() => triggerSync()}
+              className="px-2 py-1 bg-cyan-950 hover:bg-cyan-900 border border-cyan-800 rounded text-[10px] font-mono text-cyan-300 flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" /> Refresh
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-850">
+            <span className="text-[10px] font-mono text-slate-400 block">Sync Latency</span>
+            <span className="text-sm font-bold font-mono text-cyan-400">{syncLatencyMs} ms</span>
+          </div>
+          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-850">
+            <span className="text-[10px] font-mono text-slate-400 block">Queue Depth</span>
+            <span className={`text-sm font-bold font-mono ${syncQueueCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+              {syncQueueCount} pending
+            </span>
+          </div>
+          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-850">
+            <span className="text-[10px] font-mono text-slate-400 block">Storage Payload</span>
+            <span className="text-sm font-bold font-mono text-teal-400">{storagePayloadKb} KB</span>
+          </div>
+          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-850">
+            <span className="text-[10px] font-mono text-slate-400 block">Live Posture</span>
+            <span className="text-xs font-bold font-mono text-amber-300 uppercase truncate block" title={cloudChoice}>
+              {cloudChoice === 'estate' ? 'ESTATE CLOUD' : cloudChoice === 'custom' ? 'OWN CLOUD' : 'LOCAL ONLY'}
+            </span>
+          </div>
+        </div>
+
+        {/* Device Presence */}
+        <div className="space-y-1.5 pt-1">
+          <span className="text-[11px] font-bold text-slate-400">Active Devices ({deviceSessions.length})</span>
+          <div className="space-y-1 max-h-28 overflow-y-auto">
+            {deviceSessions.map((ds, idx) => (
+              <div key={idx} className="bg-slate-950 p-2 rounded-lg border border-slate-900 flex items-center justify-between text-xs font-mono">
+                <span className="text-slate-200">{ds.deviceName} {ds.isCurrent && '(This)'}</span>
+                <span className="text-[10px] text-slate-400">{new Date(ds.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Backup & Restore Card */}
+      <div className="bg-[#070e1c] border border-slate-850 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-teal-400">
+              <Database className="w-4 h-4" />
+            </div>
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Backup & Restore</h3>
+          </div>
+          <label className="text-[10px] text-slate-400 flex items-center gap-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={compressedBackup}
+              onChange={e => setCompressedBackup(e.target.checked)}
+              className="rounded bg-slate-900 border-slate-700 text-teal-500"
+            />
+            Compress (.z)
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            onClick={() => downloadBackup(compressedBackup)}
+            className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-teal-300 transition"
+          >
+            <Download className="w-4 h-4" /> Download Backup ({compressedBackup ? '.z' : '.json'})
+          </button>
+
+          <label className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-cyan-300 transition cursor-pointer">
+            <Upload className="w-4 h-4" /> Restore from File (.json/.z)
+            <input
+              type="file"
+              accept=".json,.z"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const isCompressed = file.name.endsWith('.z');
+                const rawContent = isCompressed ? await file.arrayBuffer() : await file.text();
+                try {
+                  let jsonStr = '';
+                  if (isCompressed && rawContent instanceof ArrayBuffer && typeof DecompressionStream !== 'undefined') {
+                    const stream = new Response(rawContent).body!.pipeThrough(new DecompressionStream('gzip'));
+                    jsonStr = await new Response(stream).text();
+                  } else {
+                    jsonStr = rawContent as string;
+                  }
+                  const parsed = JSON.parse(jsonStr);
+                  const summary = `${parsed.orders?.length || 0} orders, ${parsed.ledgerEntries?.length || 0} ledger lines, ${parsed.stockItems?.length || 0} stock items`;
+                  setRestoreStaging({ rawContent, isCompressed, summary });
+                  setRestoreModalOpen(true);
+                } catch (err: any) {
+                  alert(`Failed to read backup file: ${err.message}`);
+                }
+              }}
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* 3. Cloud Snapshots Card */}
+      {cloudSnapshots.length > 0 && (
+        <div className="bg-[#070e1c] border border-slate-850 rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Cloud Backup History (Snapshots)</span>
+            <span className="text-[10px] font-mono text-teal-400">{cloudSnapshots.length} stored (max 14)</span>
+          </div>
+
+          <div className="space-y-1.5 max-h-36 overflow-y-auto">
+            {cloudSnapshots.map(snap => (
+              <div key={snap.id} className="bg-slate-950 p-2.5 rounded-xl border border-slate-850 flex items-center justify-between text-xs font-mono">
+                <div>
+                  <span className="font-bold text-slate-200 block">{snap.date}</span>
+                  <span className="text-[10px] text-slate-400">
+                    {snap.ordersCount} orders · {snap.ledgerCount} ledger · {snap.stockCount} stock
+                  </span>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (confirm(`Restore snapshot for ${snap.date}? This will replace current local data.`)) {
+                      await restoreCloudSnapshot(snap.id);
+                      setRestoreSuccess(`Restored snapshot from ${snap.date}`);
+                      setTimeout(() => setRestoreSuccess(null), 3000);
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-teal-950 hover:bg-teal-900 border border-teal-800 text-teal-300 rounded text-[11px]"
+                >
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+          {restoreSuccess && (
+            <div className="p-2 bg-emerald-950 border border-emerald-800 text-emerald-300 rounded text-xs font-mono">
+              {restoreSuccess}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 4. Danger Zone Card */}
+      <div className="bg-[#120505] border-2 border-rose-900/80 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-rose-950 border border-rose-800 flex items-center justify-center text-rose-400">
+            <Trash2 className="w-4 h-4" />
+          </div>
+          <h3 className="text-xs font-bold text-rose-400 uppercase tracking-wider">Danger Zone</h3>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Destructive operations require explicit read-back 'RESET' and device PIN verification.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            onClick={() => {
+              setDangerActionType('reset_shop');
+              setDangerTypedReset('');
+              setDangerPin('');
+              setDangerError(null);
+              setDangerModalOpen(true);
+            }}
+            className="p-2.5 bg-rose-950/60 hover:bg-rose-950 border border-rose-800/80 rounded-xl text-xs font-bold text-rose-300 transition flex items-center justify-center gap-1.5"
+          >
+            <RotateCcw className="w-3.5 h-3.5" /> Reset Shop Data
+          </button>
+          <button
+            onClick={() => {
+              setDangerActionType('factory_reset');
+              setDangerTypedReset('');
+              setDangerPin('');
+              setDangerError(null);
+              setDangerModalOpen(true);
+            }}
+            className="p-2.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-700 rounded-xl text-xs font-bold text-rose-200 transition flex items-center justify-center gap-1.5"
+          >
+            <Lock className="w-3.5 h-3.5" /> Factory Reset
+          </button>
+        </div>
+      </div>
+
+      {/* Restore Confirmation Modal */}
+      {restoreModalOpen && restoreStaging && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-cyan-800 rounded-2xl max-w-md w-full p-5 space-y-4 animate-in fade-in">
+            <h3 className="text-sm font-bold text-cyan-300">Confirm Backup Restore</h3>
+            <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 text-xs font-mono text-slate-200">
+              {restoreStaging.summary} will REPLACE current local data.
+            </div>
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Enter Device PIN to Confirm</label>
+              <input
+                type="password"
+                maxLength={6}
+                value={restorePin}
+                onChange={e => setRestorePin(e.target.value)}
+                placeholder="••••"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-center text-lg font-mono text-slate-100 outline-none"
+              />
+            </div>
+            {restoreError && (
+              <div className="p-2 bg-rose-950 border border-rose-800 text-rose-300 rounded text-xs font-mono">
+                {restoreError}
+              </div>
+            )}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => setRestoreModalOpen(false)}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const validPin = await verifyDevicePin(restorePin);
+                  if (!validPin) {
+                    setRestoreError("Invalid device PIN.");
+                    return;
+                  }
+                  const res = await restoreBackup(restoreStaging.rawContent, restoreStaging.isCompressed);
+                  if (res.success) {
+                    setRestoreModalOpen(false);
+                    alert(res.message);
+                  } else {
+                    setRestoreError(res.message);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold"
+              >
+                Proceed Restore
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Danger Zone Modal */}
+      {dangerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-rose-900 rounded-2xl max-w-md w-full p-5 space-y-4 animate-in fade-in">
+            <h3 className="text-sm font-bold text-rose-400">
+              {dangerActionType === 'reset_shop' ? 'Confirm Reset Shop Data' : 'Confirm Factory Reset'}
+            </h3>
+            <p className="text-xs text-slate-300">
+              Type <span className="font-mono font-bold text-rose-400">RESET</span> below and enter your device PIN.
+            </p>
+            <input
+              type="text"
+              value={dangerTypedReset}
+              onChange={e => setDangerTypedReset(e.target.value)}
+              placeholder="Type RESET"
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-center text-xs font-mono text-rose-300 outline-none uppercase"
+            />
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Device PIN</label>
+              <input
+                type="password"
+                maxLength={6}
+                value={dangerPin}
+                onChange={e => setDangerPin(e.target.value)}
+                placeholder="••••"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-center text-lg font-mono text-slate-100 outline-none"
+              />
+            </div>
+            {dangerError && (
+              <div className="p-2 bg-rose-950 border border-rose-800 text-rose-300 rounded text-xs font-mono">
+                {dangerError}
+              </div>
+            )}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => setDangerModalOpen(false)}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (dangerTypedReset.trim().toUpperCase() !== 'RESET') {
+                    setDangerError("You must type RESET to confirm.");
+                    return;
+                  }
+                  const validPin = await verifyDevicePin(dangerPin);
+                  if (!validPin) {
+                    setDangerError("Invalid device PIN.");
+                    return;
+                  }
+                  if (dangerActionType === 'reset_shop') {
+                    resetShopData();
+                    console.info('[telemetry] danger-zone reset-shop-data');
+                    alert("Shop data successfully reset.");
+                  } else if (dangerActionType === 'factory_reset') {
+                    await factoryResetShop();
+                    console.info('[telemetry] danger-zone factory-reset');
+                    alert("Factory reset completed.");
+                  }
+                  setDangerModalOpen(false);
+                }}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
+              >
+                Execute
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Privacy & Data Section */}
+      <div className="bg-[#070e1c] border border-slate-850 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Privacy & Data</h3>
+        </div>
+
+        <div className="bg-slate-950 p-3 rounded-xl border border-slate-900 font-mono text-[11px] text-slate-300 space-y-1">
+          <div><strong className="text-slate-400">Posture:</strong> <span className="text-cyan-300">{cloudChoice}</span></div>
+          <div><strong className="text-slate-400">Data Map:</strong> Orders ({orders.length}), Ledger ({ledgerEntries.length}), Stock ({stockItems.length})</div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            onClick={exportDrawer}
+            className="p-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-cyan-300 transition"
+          >
+            <Download className="w-4 h-4" /> Export my drawer
+          </button>
+
+          <button
+            onClick={() => {
+              setEraseTypedErase('');
+              setErasePin('');
+              setEraseError(null);
+              setEraseModalOpen(true);
+            }}
+            className="p-3 bg-rose-950/60 hover:bg-rose-950 border border-rose-800/80 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-rose-300 transition"
+          >
+            <Trash2 className="w-4 h-4" /> Erase my drawer
+          </button>
+        </div>
+      </div>
+
+      {/* Telemetry Card */}
+      <div className="bg-[#070e1c] border border-slate-850 rounded-2xl p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-teal-400">
+              <Activity className="w-4 h-4" />
+            </div>
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Telemetry & Health</h3>
+          </div>
+          <button
+            onClick={toggleTelemetry}
+            className={`w-12 h-7 rounded-full transition-colors relative p-1 shrink-0 ${
+              telemetryEnabled ? 'bg-teal-500' : 'bg-slate-800'
+            }`}
+          >
+            <div className={`w-5 h-5 rounded-full bg-white transition-transform ${
+              telemetryEnabled ? 'translate-x-5' : 'translate-x-0'
+            }`} />
+          </button>
+        </div>
+
+        <p className="text-[11px] text-slate-400">
+          Master Telemetry Switch: {telemetryEnabled ? 'Active (disclosed legs emitting)' : 'Paused (except governance)'}
+        </p>
+
+        <div className="bg-slate-950 p-3 rounded-xl border border-slate-900 text-xs font-mono text-slate-300 space-y-1">
+          <div className="text-[10px] text-slate-400 uppercase tracking-wide font-bold mb-1">Monitored Telemetry Legs:</div>
+          <div>• stock-import</div>
+          <div>• order-edited</div>
+          <div>• screen-stumble</div>
+          <div>• cloud-budget</div>
+          <div>• sync-latency</div>
+          <div className="text-rose-400">• danger-zone (governance: always write locally)</div>
+          <div className="text-rose-400">• drawer-erased (governance: always write locally)</div>
+        </div>
+      </div>
+
+      {/* Erase Drawer Modal */}
+      {eraseModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-rose-900 rounded-2xl max-w-md w-full p-5 space-y-4 animate-in fade-in">
+            <h3 className="text-sm font-bold text-rose-400">Erase Drawer Confirmation</h3>
+            <p className="text-xs text-slate-300">
+              Type <span className="font-mono font-bold text-rose-400">ERASE</span> below and enter your device PIN. This will permanently delete your local drawer data {cloudChoice !== 'local_only' ? 'and cloud drawer docs' : ''}.
+            </p>
+            <input
+              type="text"
+              value={eraseTypedErase}
+              onChange={e => setEraseTypedErase(e.target.value)}
+              placeholder="Type ERASE"
+              className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-center text-xs font-mono text-rose-300 outline-none uppercase"
+            />
+            <div>
+              <label className="text-xs text-slate-400 block mb-1">Device PIN</label>
+              <input
+                type="password"
+                maxLength={6}
+                value={erasePin}
+                onChange={e => setErasePin(e.target.value)}
+                placeholder="••••"
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-center text-lg font-mono text-slate-100 outline-none"
+              />
+            </div>
+            {eraseError && (
+              <div className="p-2 bg-rose-950 border border-rose-800 text-rose-300 rounded text-xs font-mono">
+                {eraseError}
+              </div>
+            )}
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => setEraseModalOpen(false)}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (eraseTypedErase.trim().toUpperCase() !== 'ERASE') {
+                    setEraseError("You must type ERASE to confirm.");
+                    return;
+                  }
+                  const res = await eraseDrawer(erasePin);
+                  if (res.success) {
+                    setEraseModalOpen(false);
+                    alert(res.message);
+                  } else {
+                    setEraseError(res.message);
+                  }
+                }}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold"
+              >
+                Erase Drawer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* About Card: Logixtix Marketing Ltd · Mauritius */}
       <div className="bg-[#050914] border border-cyan-950/70 rounded-2xl p-4 text-xs text-slate-400 space-y-2.5">
         <div className="flex items-center justify-between">
@@ -824,6 +1405,10 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
             </span>
           </div>
         </div>
+
+        <p className="text-cyan-200 text-[11px] font-mono bg-cyan-950/40 p-2 rounded-lg border border-cyan-900/60">
+          Local data lives until you erase it. Cloud snapshots keep 14 days. Telemetry is minimal, disclosed and off-able.
+        </p>
 
         <p className="leading-relaxed">
           Merchant Jarvis. Sibling product of the{' '}

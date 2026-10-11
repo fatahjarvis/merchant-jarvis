@@ -15,7 +15,10 @@ import {
   CloudChoiceMode,
   DeviceSession,
   OrderConflictData,
-  OrderItem
+  OrderItem,
+  CloudSnapshot,
+  LicenceKeyPayload,
+  LicenceState
 } from '../types';
 import { 
   DEFAULT_MERCHANT_PROFILE, 
@@ -46,6 +49,7 @@ import { User } from 'firebase/auth';
 import { getMauritiusDateKey, getMauritiusNow, formatMauritiusShortTime, formatRs } from '../utils/mauritiusTime';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { generateSupplierWhatsAppUrl as buildSupplierWhatsAppUrl } from '../utils/stockUtils';
+import { verifyDevicePin } from '../utils/security';
 
 const STORAGE_KEYS = {
   ORDERS: 'mjarvis_orders_v1',
@@ -60,7 +64,16 @@ const STORAGE_KEYS = {
   BUDGET_READS: 'mjarvis_budget_reads',
   CLOUD_CHOICE: 'mjarvis_cloud_choice_v1',
   DEVICE_ID: 'mjarvis_device_id_v1',
-  DEVICE_SESSIONS: 'mjarvis_device_sessions_v1'
+  DEVICE_SESSIONS: 'mjarvis_device_sessions_v1',
+  CLOUD_SNAPSHOTS: 'mjarvis_cloud_snapshots_v1',
+  PRIVACY_CONSENT: 'mjarvis_privacy_consent_',
+  TELEMETRY_ENABLED: 'mjarvis_telemetry_enabled_v1'
+};
+
+export const PRIVACY_NOTICES: Record<CloudChoiceMode, string> = {
+  local_only: "Merchant Jarvis stores your shop's records only on this device. Logixtix Marketing Ltd collects nothing from your shop book. Minimal technical telemetry (app health counters) may be sent to keep the app reliable; you can switch it off in Settings. Your data stays yours: export or erase it anytime from Menu → Privacy & Data.",
+  estate: "Your shop's records travel encrypted and rest in the estate's secure cloud (Singapore region). Logixtix Marketing Ltd acts as processor; you remain controller of your customers' details. We collect only what the shop needs: shop profile, contact details, orders, ledger and stock records, plus minimal off-able telemetry. Export or erase your drawer anytime. Rights under the Data Protection Act 2017 (Mauritius) apply.",
+  custom: "Your shop's records live in YOUR own cloud account. Logixtix Marketing Ltd stores nothing of your shop book; we keep only your contact details for support and licensing, plus minimal off-able telemetry. You control retention and access entirely."
 };
 
 const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
@@ -163,6 +176,28 @@ interface StoreContextType {
   // Conflict Manners
   simulateOrderConflict: (orderId: string) => void;
   resolveOrderConflict: (orderId: string, resolution: 'keep_a' | 'keep_b' | 'merge') => void;
+  // v49b Diagnostics & Backups & Snapshots & Danger Zone
+  syncLatencyMs: number;
+  storagePayloadKb: number;
+  cloudSnapshots: CloudSnapshot[];
+  downloadBackup: (compressed: boolean) => Promise<void>;
+  restoreBackup: (fileContent: string | ArrayBuffer, isCompressed: boolean) => Promise<{ success: boolean; message: string }>;
+  restoreCloudSnapshot: (snapshotId: string) => Promise<void>;
+  resetShopData: () => void;
+  factoryResetShop: () => Promise<void>;
+  // v48 Compliance Manners
+  privacyConsentGiven: boolean;
+  setPrivacyConsentGiven: (given: boolean) => void;
+  telemetryEnabled: boolean;
+  toggleTelemetry: () => void;
+  exportDrawer: () => void;
+  eraseDrawer: (pin: string) => Promise<{ success: boolean; message: string }>;
+  // v50 Licence
+  licenceKey: LicenceKeyPayload | null;
+  licenceState: LicenceState;
+  activateLicence: (key: string) => Promise<boolean>;
+  deleteLicence: (pin: string) => Promise<boolean>;
+  checkTierGate: (gate: 'stock-add' | 'device-signin' | 'shop-count') => boolean;
 }
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -297,6 +332,295 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     ];
   });
+
+  const [syncLatencyMs, setSyncLatencyMs] = useState<number>(42);
+
+  const [privacyConsentGiven, setPrivacyConsentGivenState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(`${STORAGE_KEYS.PRIVACY_CONSENT}_${cloudChoice}`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const setPrivacyConsentGiven = useCallback((given: boolean) => {
+    setPrivacyConsentGivenState(given);
+    try {
+      localStorage.setItem(`${STORAGE_KEYS.PRIVACY_CONSENT}_${cloudChoice}`, given ? 'true' : 'false');
+    } catch {}
+  }, [cloudChoice]);
+
+  useEffect(() => {
+    try {
+      const given = localStorage.getItem(`${STORAGE_KEYS.PRIVACY_CONSENT}_${cloudChoice}`) === 'true';
+      setPrivacyConsentGivenState(given);
+    } catch {
+      setPrivacyConsentGivenState(false);
+    }
+  }, [cloudChoice]);
+
+  const [telemetryEnabled, setTelemetryEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.TELEMETRY_ENABLED);
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleTelemetry = useCallback(() => {
+    setTelemetryEnabled(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem(STORAGE_KEYS.TELEMETRY_ENABLED, next ? 'true' : 'false');
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  const exportDrawer = useCallback(() => {
+    const data = {
+      version: 'v48',
+      merchantId: profile.merchantId,
+      shopName: profile.shopName,
+      exportedAt: new Date().toISOString(),
+      profile,
+      orders,
+      ledgerEntries,
+      stockItems,
+      stockMovements
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `merchant_jarvis_drawer_${profile.merchantId}_${new Date().toISOString().substring(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [profile, orders, ledgerEntries, stockItems, stockMovements]);
+
+  const eraseDrawer = useCallback(async (pin: string): Promise<{ success: boolean; message: string }> => {
+    const valid = await verifyDevicePin(pin);
+    if (!valid) {
+      return { success: false, message: 'Invalid device PIN.' };
+    }
+    try {
+      const currentUser = auth?.currentUser;
+      if (currentUser && db && cloudChoice !== 'local_only') {
+        await deleteDoc(doc(db, 'merchants', profile.merchantId)).catch(() => {});
+      }
+    } catch {}
+
+    setOrders([]);
+    setLedgerEntries([]);
+    setStockItems([]);
+    setStockMovements([]);
+    setSyncQueue([]);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.ORDERS);
+      localStorage.removeItem(STORAGE_KEYS.LEDGER);
+      localStorage.removeItem(STORAGE_KEYS.STOCK);
+      localStorage.removeItem(STORAGE_KEYS.STOCK_MOVEMENTS);
+      localStorage.removeItem(STORAGE_KEYS.SYNC_QUEUE);
+    } catch {}
+
+    console.info('[audit] drawer-erased');
+    return { success: true, message: 'Drawer successfully erased.' };
+  }, [cloudChoice, profile.merchantId]);
+
+  const [cloudSnapshots, setCloudSnapshots] = useState<CloudSnapshot[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CLOUD_SNAPSHOTS);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  });
+
+  const [licenceState, setLicenceState] = useState<LicenceState>('FREE_PILOT');
+  const [licenceKey, setLicenceKey] = useState<LicenceKeyPayload | null>(null);
+
+  const activateLicence = useCallback(async (key: string): Promise<boolean> => {
+    // Placeholder: call verifyLicenceKey, set state
+    return false;
+  }, []);
+
+  const deleteLicence = useCallback(async (pin: string): Promise<boolean> => {
+    const valid = await verifyDevicePin(pin);
+    if (!valid) return false;
+    setLicenceState('FREE_PILOT');
+    setLicenceKey(null);
+    return true;
+  }, []);
+
+  const checkTierGate = useCallback((gate: 'stock-add' | 'device-signin' | 'shop-count') => {
+    // Placeholder logic for v50 gates
+    return true; 
+  }, [licenceKey]);
+
+
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.CLOUD_SNAPSHOTS, JSON.stringify(cloudSnapshots));
+    } catch {}
+  }, [cloudSnapshots]);
+
+  const storagePayloadKb = useMemo(() => {
+    try {
+      let totalBytes = 0;
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('mjarvis_')) {
+          const val = localStorage.getItem(key) || '';
+          totalBytes += key.length + val.length;
+        }
+      }
+      return Math.round((totalBytes / 1024) * 10) / 10;
+    } catch {
+      return 0;
+    }
+  }, [orders, ledgerEntries, stockItems, profile, syncQueue, cloudSnapshots]);
+
+  // Auto-snapshot at ledger day-roll
+  const takeSnapshotIfNeeded = useCallback(() => {
+    if (cloudChoice === 'local_only') return;
+    const todayStr = mutTodayKey;
+    setCloudSnapshots(prev => {
+      if (prev.some(s => s.date === todayStr)) return prev;
+      const newSnap: CloudSnapshot = {
+        id: `snap_${Date.now()}`,
+        merchantId: profile.merchantId,
+        date: todayStr,
+        ordersCount: orders.length,
+        ledgerCount: ledgerEntries.length,
+        stockCount: stockItems.length,
+        payload: { orders, ledgerEntries, stockItems, profile },
+        createdAt: new Date().toISOString()
+      };
+      const combined = [newSnap, ...prev];
+      if (combined.length > 14) {
+        console.info('[audit] pruned cloud snapshot older than 14 days');
+        combined.length = 14;
+      }
+      return combined;
+    });
+  }, [cloudChoice, mutTodayKey, orders, ledgerEntries, stockItems, profile]);
+
+  const downloadBackup = async (compressed: boolean) => {
+    const backupData = {
+      version: 'v49b',
+      merchantId: profile.merchantId,
+      shopName: profile.shopName,
+      createdAt: new Date().toISOString(),
+      orders,
+      ledgerEntries,
+      stockItems,
+      stockMovements,
+      profile,
+      deviceSessions
+    };
+    const jsonStr = JSON.stringify(backupData, null, 2);
+    let blobData: BlobPart = jsonStr;
+    let ext = 'json';
+
+    if (compressed && typeof CompressionStream !== 'undefined') {
+      try {
+        const stream = new Response(jsonStr).body!.pipeThrough(new CompressionStream('gzip'));
+        blobData = await new Response(stream).arrayBuffer();
+        ext = 'z';
+      } catch (err) {
+        console.warn("Compression failed, fallback to JSON", err);
+      }
+    }
+
+    const blob = new Blob([blobData], { type: ext === 'z' ? 'application/octet-stream' : 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `merchant_jarvis_backup_${profile.merchantId}_${getMauritiusDateKey(new Date())}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const restoreBackup = async (fileContent: string | ArrayBuffer, isCompressed: boolean): Promise<{ success: boolean; message: string }> => {
+    try {
+      let jsonStr = '';
+      if (isCompressed && fileContent instanceof ArrayBuffer && typeof DecompressionStream !== 'undefined') {
+        const stream = new Response(fileContent).body!.pipeThrough(new DecompressionStream('gzip'));
+        jsonStr = await new Response(stream).text();
+      } else if (typeof fileContent === 'string') {
+        jsonStr = fileContent;
+      } else if (fileContent instanceof ArrayBuffer) {
+        jsonStr = new TextDecoder().decode(fileContent);
+      } else {
+        return { success: false, message: 'Invalid backup file format.' };
+      }
+
+      const parsed = JSON.parse(jsonStr);
+      if (!parsed.orders || !parsed.ledgerEntries || !parsed.stockItems) {
+        return { success: false, message: 'Invalid backup schema: missing orders, ledger, or stock.' };
+      }
+
+      setOrders(parsed.orders);
+      setLedgerEntries(parsed.ledgerEntries);
+      setStockItems(parsed.stockItems);
+      if (parsed.stockMovements) setStockMovements(parsed.stockMovements);
+      if (parsed.profile) setProfile(parsed.profile);
+      if (parsed.deviceSessions) setDeviceSessions(parsed.deviceSessions);
+
+      const msg = `${parsed.orders.length} orders, ${parsed.ledgerEntries.length} ledger lines, ${parsed.stockItems.length} stock items successfully restored.`;
+      return { success: true, message: msg };
+    } catch (err: any) {
+      return { success: false, message: `Restore error: ${err.message || 'Failed to parse backup'}` };
+    }
+  };
+
+  const restoreCloudSnapshot = async (snapshotId: string) => {
+    const snap = cloudSnapshots.find(s => s.id === snapshotId);
+    if (!snap) return;
+    setOrders(snap.payload.orders || []);
+    setLedgerEntries(snap.payload.ledgerEntries || []);
+    setStockItems(snap.payload.stockItems || []);
+    if (snap.payload.profile) setProfile(snap.payload.profile);
+  };
+
+  const resetShopData = () => {
+    setOrders([]);
+    setLedgerEntries([]);
+    setStockItems([]);
+    setStockMovements([]);
+    setSyncQueue([]);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.ORDERS);
+      localStorage.removeItem(STORAGE_KEYS.LEDGER);
+      localStorage.removeItem(STORAGE_KEYS.STOCK);
+      localStorage.removeItem(STORAGE_KEYS.STOCK_MOVEMENTS);
+      localStorage.removeItem(STORAGE_KEYS.SYNC_QUEUE);
+    } catch {}
+    console.info('[telemetry] danger-zone reset-shop-data');
+  };
+
+  const factoryResetShop = async () => {
+    try {
+      await logout();
+    } catch {}
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('mjarvis_') || key.startsWith('firebase:'))) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {}
+    setOrders(INITIAL_ORDERS);
+    setLedgerEntries(INITIAL_LEDGER_ENTRIES);
+    setStockItems(INITIAL_STOCK_ITEMS);
+    setStockMovements([]);
+    setSyncQueue([]);
+    setProfile(DEFAULT_MERCHANT_PROFILE);
+    setCloudSnapshots([]);
+    console.info('[telemetry] danger-zone factory-reset');
+  };
 
   // Client daily counters: writes and reads (MUT date based)
   const [dailyWrites, setDailyWrites] = useState<number>(() => {
@@ -1452,7 +1776,26 @@ Logixtix Marketing Ltd · Mauritius
     deviceSessions,
     signOutElsewhere,
     simulateOrderConflict,
-    resolveOrderConflict
+    resolveOrderConflict,
+    syncLatencyMs,
+    storagePayloadKb,
+    cloudSnapshots,
+    downloadBackup,
+    restoreBackup,
+    restoreCloudSnapshot,
+    resetShopData,
+    factoryResetShop,
+    privacyConsentGiven,
+    setPrivacyConsentGiven,
+    telemetryEnabled,
+    toggleTelemetry,
+    exportDrawer,
+    eraseDrawer,
+    licenceKey,
+    licenceState,
+    activateLicence,
+    deleteLicence,
+    checkTierGate
   }), [
     orders,
     ledgerEntries,
