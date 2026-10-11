@@ -21,10 +21,9 @@ import {
   RotateCcw,
   Package,
   Layers,
-  ChevronRight
+  ChevronRight,
+  Smartphone
 } from 'lucide-react';
-
-const MJARVIS_SHOWROOM = 'https://jarvismu.com';
 
 interface MenuScreenProps {
   onOpenAuth: () => void;
@@ -67,7 +66,12 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
     resetToEstateCloudDefault,
     isConfigOverridden,
     budgetStats,
-    budgetNotice
+    budgetNotice,
+    cloudChoice,
+    setCloudChoiceMode,
+    probeCustomCloudConfig,
+    deviceSessions,
+    signOutElsewhere
   } = useStore();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -91,6 +95,12 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
   const [templateSupplier, setTemplateSupplier] = useState(
     profile.whatsappTemplateSupplier || '…please supply {qty} {unit} of {item} ({brand})…'
   );
+
+  // Cloud Choice & My Own Cloud guided paste panel state
+  const [showCustomPastePanel, setShowCustomPastePanel] = useState(false);
+  const [customCloudJsonInput, setCustomCloudJsonInput] = useState('');
+  const [probeResult, setProbeResult] = useState<{ success: boolean; projectId?: string; error?: string } | null>(null);
+  const [isProbing, setIsProbing] = useState(false);
 
   // Cloud config override state (estate-hand only)
   const [showAdvancedCloud, setShowAdvancedCloud] = useState(false);
@@ -437,21 +447,21 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
         )}
       </div>
 
-      {/* CLOUD VEIL: CLOUD SYNC Panel */}
-      <div className="bg-[#070e1c] border border-cyan-950/80 rounded-2xl p-4 space-y-3">
-        <div className="flex items-center justify-between">
+      {/* CLOUD VEIL: CLOUD CHOICE (3 cards) & MULTI-DEVICE & ADVANCED */}
+      <div className="bg-[#070e1c] border border-cyan-950/80 rounded-2xl p-4 space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 text-cyan-400 flex items-center justify-center">
               <Cloud className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-200">CLOUD SYNC</h3>
-              <p className="text-[11px] text-slate-400">Tenancy drawer & live synchronization</p>
+              <h3 className="text-sm font-bold text-slate-200">CLOUD CHOICE & SESSIONS</h3>
+              <p className="text-[11px] text-slate-400">Select your tenancy posture & manage connected devices</p>
             </div>
           </div>
           <button
             onClick={handleSyncClick}
-            disabled={!isOnline}
+            disabled={!isOnline || cloudChoice === 'local_only'}
             className="text-xs text-cyan-400 font-mono flex items-center gap-1 hover:underline disabled:opacity-40"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
@@ -459,104 +469,199 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
           </button>
         </div>
 
-        {/* Status card (Connected / Offline guest) */}
-        <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            {isOnline ? (
-              <div className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" />
-            ) : (
-              <div className="w-3 h-3 rounded-full bg-amber-400" />
-            )}
-            <div>
-              <span className="text-xs font-bold text-slate-100 block">
-                {isOnline ? (user ? 'Connected' : 'Connected (Offline guest)') : 'Offline guest mode'}
-              </span>
-              <span className="text-[11px] text-slate-400 font-mono">
-                Tenancy: {profile.merchantId}
-              </span>
+        {/* 1. CLOUD CHOICE: Three cards */}
+        <div className="space-y-2.5">
+          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">1. Tenancy Posture</span>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Card 1: Estate Cloud */}
+            <div 
+              onClick={() => {
+                setCloudChoiceMode('estate');
+                setShowCustomPastePanel(false);
+              }}
+              className={`p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                cloudChoice === 'estate' 
+                  ? 'bg-cyan-950/60 border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.25)]' 
+                  : 'bg-slate-950/80 border-slate-850 hover:border-slate-700'
+              }`}
+              style={{ minHeight: '90px' }}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-100">Estate Cloud</span>
+                  {cloudChoice === 'estate' && <CheckCircle className="w-3.5 h-3.5 text-cyan-400" />}
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Default estate infrastructure with secure backup & sync.
+                </p>
+              </div>
+              <span className="text-[10px] font-mono text-cyan-400 pt-2">Active Default</span>
+            </div>
+
+            {/* Card 2: My Own Cloud */}
+            <div 
+              onClick={() => {
+                setCloudChoiceMode('custom');
+                setShowCustomPastePanel(true);
+              }}
+              className={`p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                cloudChoice === 'custom' 
+                  ? 'bg-teal-950/60 border-teal-500 shadow-[0_0_15px_rgba(20,184,166,0.25)]' 
+                  : 'bg-slate-950/80 border-slate-850 hover:border-slate-700'
+              }`}
+              style={{ minHeight: '90px' }}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-100">My Own Cloud</span>
+                  {cloudChoice === 'custom' && <CheckCircle className="w-3.5 h-3.5 text-teal-400" />}
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  Bring your own Firebase project configuration JSON.
+                </p>
+              </div>
+              <span className="text-[10px] font-mono text-teal-400 pt-2">Configure & Probe</span>
+            </div>
+
+            {/* Card 3: Local Only */}
+            <div 
+              onClick={() => {
+                setCloudChoiceMode('local_only');
+                setShowCustomPastePanel(false);
+              }}
+              className={`p-3 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                cloudChoice === 'local_only' 
+                  ? 'bg-amber-950/60 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.25)]' 
+                  : 'bg-slate-950/80 border-slate-850 hover:border-slate-700'
+              }`}
+              style={{ minHeight: '90px' }}
+            >
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-slate-100">Local Only</span>
+                  {cloudChoice === 'local_only' && <CheckCircle className="w-3.5 h-3.5 text-amber-400" />}
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">
+                  No cloud sync. Your data lives strictly on this device.
+                </p>
+              </div>
+              <span className="text-[10px] font-mono text-amber-400 pt-2">Strict Offline</span>
             </div>
           </div>
-          <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-            isOnline ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-amber-950 text-amber-300 border-amber-800'
-          }`}>
-            {isOnline ? 'ONLINE' : 'OFFLINE'}
-          </span>
-        </div>
 
-        {/* Local Storage & Sync Queue Status */}
-        <div className="grid grid-cols-3 gap-2 text-center text-xs">
-          <div className="bg-slate-950 p-2 rounded-xl border border-slate-900">
-            <span className="text-[10px] text-slate-500 block">Orders</span>
-            <span className="font-mono font-bold text-slate-200">{orders.length}</span>
-          </div>
-          <div className="bg-slate-950 p-2 rounded-xl border border-slate-900">
-            <span className="text-[10px] text-slate-500 block">Stock SKUs</span>
-            <span className="font-mono font-bold text-slate-200">{stockItems.length}</span>
-          </div>
-          <div className="bg-slate-950 p-2 rounded-xl border border-slate-900">
-            <span className="text-[10px] text-slate-500 block">Pending Queue</span>
-            <span className={`font-mono font-bold ${syncQueueCount > 0 ? 'text-amber-400' : 'text-teal-400'}`}>
-              {syncQueueCount}
-            </span>
-          </div>
-        </div>
+          {/* Guided Paste Panel for 'My Own Cloud' */}
+          {showCustomPastePanel && cloudChoice === 'custom' && (
+            <div className="bg-slate-950 p-3.5 rounded-2xl border border-teal-800/80 space-y-3 animate-in fade-in">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-teal-300">Guided Custom Cloud Configuration</span>
+                <span className="text-[10px] font-mono text-slate-400">Firebase Web SDK JSON</span>
+              </div>
 
-        {/* Telemetry Leg: cloud-budget r/w & Daily Device Budget */}
-        <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-900 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-mono font-bold text-cyan-300">
-              {budgetStats.telemetryLeg}
-            </span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
-              budgetStats.isRestingTonight
-                ? 'bg-rose-950 text-rose-300 border-rose-800'
-                : budgetStats.isAmberAlert
-                ? 'bg-amber-950 text-amber-300 border-amber-800 font-bold'
-                : 'bg-teal-950 text-teal-300 border-teal-800'
-            }`}>
-              {budgetStats.isRestingTonight 
-                ? 'RESTING' 
-                : budgetStats.isAmberAlert 
-                ? 'AMBER 60%+' 
-                : 'BUDGET OK'}
-            </span>
-          </div>
+              {/* Plain plaque requested */}
+              <div className="bg-teal-950/40 border border-teal-800/70 p-2.5 rounded-xl text-[11px] text-teal-200">
+                "Your data will live in YOUR cloud; the estate keeps only your contact details."
+              </div>
 
-          <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
-            <div 
-              className={`h-full transition-all duration-300 ${
-                budgetStats.isRestingTonight 
-                  ? 'bg-rose-500' 
-                  : budgetStats.isAmberAlert 
-                  ? 'bg-amber-400' 
-                  : 'bg-teal-400'
-              }`}
-              style={{ width: `${Math.min(100, (budgetStats.writes / budgetStats.maxWrites) * 100)}%` }}
-            />
-          </div>
+              <textarea
+                rows={4}
+                value={customCloudJsonInput}
+                onChange={e => setCustomCloudJsonInput(e.target.value)}
+                placeholder={'{\n  "apiKey": "AIzaSy...",\n  "authDomain": "your-project.firebaseapp.com",\n  "projectId": "your-project-id",\n  "storageBucket": "...",\n  "messagingSenderId": "...",\n  "appId": "..."\n}'}
+                className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2.5 text-xs font-mono text-slate-100 outline-none"
+              />
 
-          <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
-            <span>Daily writes: {budgetStats.writes} / {budgetStats.maxWrites}</span>
-            <span>Single-doc day-book active</span>
-          </div>
+              {probeResult && (
+                <div className={`p-2 rounded-lg text-xs font-mono flex items-center gap-1.5 ${
+                  probeResult.success ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-rose-950 text-rose-300 border border-rose-800'
+                }`}>
+                  {probeResult.success ? <CheckCircle className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                  <span>{probeResult.success ? `Validation probe passed! Connected to projectId: ${probeResult.projectId}` : `Probe error: ${probeResult.error}`}</span>
+                </div>
+              )}
 
-          {budgetNotice && (
-            <div className="pt-1 text-[11px] text-amber-300 italic">
-              🌙 {budgetNotice}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!customCloudJsonInput.trim() || isProbing}
+                  onClick={async () => {
+                    setIsProbing(true);
+                    setProbeResult(null);
+                    try {
+                      const res = await probeCustomCloudConfig(customCloudJsonInput);
+                      setProbeResult(res);
+                      if (res.success) {
+                        saveCustomCloudConfig(customCloudJsonInput);
+                      }
+                    } catch (err: any) {
+                      setProbeResult({ success: false, error: err.message || 'Probe failed' });
+                    } finally {
+                      setIsProbing(false);
+                    }
+                  }}
+                  className="flex-1 py-2 px-3 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-bold text-xs disabled:opacity-40 transition"
+                  style={{ minHeight: '38px' }}
+                >
+                  {isProbing ? 'Probing Project...' : 'Validate Probe & Save'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Clause 2: Local Only notice banner if active */}
+          {cloudChoice === 'local_only' && (
+            <div className="bg-amber-950/40 border border-amber-800/80 rounded-xl p-3 text-xs text-amber-300 flex items-center gap-2.5">
+              <CloudOff className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Local Only — your shop, your device. All background sync is disabled.</span>
             </div>
           )}
         </div>
 
-        {/* Estate Auth Status */}
-        <div className="pt-2 border-t border-slate-900 flex items-center justify-between">
-          <span className="text-xs text-slate-400">
-            Account: <strong className="text-slate-200">{user?.email || 'Guest Drawer'}</strong>
-          </span>
+        {/* 3. MULTI-DEVICE card */}
+        <div className="pt-3 border-t border-slate-850 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">3. Multi-Device Sessions</span>
+            <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
+              {deviceSessions.length} active sessions
+            </span>
+          </div>
+
+          <p className="text-[11px] text-slate-400">
+            Same login across multiple devices. Heartbeat sync tracked in estate register.
+          </p>
+
+          <div className="space-y-2">
+            {deviceSessions.map((session, idx) => (
+              <div key={idx} className="bg-slate-950 p-2.5 rounded-xl border border-slate-850 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400">
+                    <Smartphone className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-slate-200 block flex items-center gap-1.5">
+                      {session.deviceName}
+                      {session.isCurrent && (
+                        <span className="text-[9px] font-mono bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.2 rounded">
+                          This device
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Last sync: {new Date(session.lastSync).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
           <button
-            onClick={onOpenAuth}
-            className="text-xs text-cyan-400 font-semibold hover:underline"
+            type="button"
+            onClick={signOutElsewhere}
+            className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition"
+            style={{ minHeight: '38px' }}
           >
-            {user ? 'Account Roles' : 'Sign In'}
+            <span>Sign out elsewhere</span>
           </button>
         </div>
 
@@ -697,7 +802,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
       </div>
 
       {/* About Card: Logixtix Marketing Ltd · Mauritius */}
-      <div className="bg-[#050914] border border-cyan-950/70 rounded-2xl p-4 text-xs text-slate-400 space-y-2">
+      <div className="bg-[#050914] border border-cyan-950/70 rounded-2xl p-4 text-xs text-slate-400 space-y-2.5">
         <div className="flex items-center justify-between">
           <span className="font-mono font-bold text-cyan-300 text-xs tracking-tight">
             {MJARVIS_FULL_BRAND_STAMP}
@@ -705,6 +810,19 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
           <span className="font-mono text-[10px] text-teal-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800/60 font-semibold">
             ESTATE EDITION
           </span>
+        </div>
+
+        <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-900 space-y-1">
+          <div className="flex justify-between font-mono text-[11px]">
+            <span className="text-slate-400">Current Posture:</span>
+            <span className="text-cyan-300 uppercase font-bold">{cloudChoice}</span>
+          </div>
+          <div className="flex justify-between font-mono text-[11px]">
+            <span className="text-slate-400">Data Map:</span>
+            <span className="text-teal-300 truncate max-w-[200px]" title="Orders / Ledger / Stock / Sync Queue">
+              Orders ({orders.length}) · Ledger ({ledgerEntries.length}) · Stock ({stockItems.length}) · Queue ({syncQueueCount})
+            </span>
+          </div>
         </div>
 
         <p className="leading-relaxed">

@@ -11,13 +11,17 @@ import {
   QueuedSyncAction,
   MailOutboxDoc,
   LedgerDayDoc,
-  DailyBudgetStats 
+  DailyBudgetStats,
+  CloudChoiceMode,
+  DeviceSession,
+  OrderConflictData,
+  OrderItem
 } from '../types';
 import { 
   DEFAULT_MERCHANT_PROFILE, 
   INITIAL_ORDERS, 
   INITIAL_LEDGER_ENTRIES, 
-  INITIAL_STOCK_ITEMS 
+  INITIAL_STOCK_ITEMS
 } from '../data/seedData';
 import { 
   auth, 
@@ -35,7 +39,8 @@ import {
   getDoc,
   saveEstateConfigOverride,
   resetEstateConfig,
-  getActiveEstateConfig
+  getActiveEstateConfig,
+  probeFirebaseConfig
 } from '../utils/firebase';
 import { User } from 'firebase/auth';
 import { getMauritiusDateKey, getMauritiusNow, formatMauritiusShortTime, formatRs } from '../utils/mauritiusTime';
@@ -52,7 +57,10 @@ const STORAGE_KEYS = {
   DATA_SAVER: 'mjarvis_data_saver_v1',
   HAS_MERGED_DEMO: 'mjarvis_demo_merged_v1',
   BUDGET_WRITES: 'mjarvis_budget_writes',
-  BUDGET_READS: 'mjarvis_budget_reads'
+  BUDGET_READS: 'mjarvis_budget_reads',
+  CLOUD_CHOICE: 'mjarvis_cloud_choice_v1',
+  DEVICE_ID: 'mjarvis_device_id_v1',
+  DEVICE_SESSIONS: 'mjarvis_device_sessions_v1'
 };
 
 const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
@@ -144,6 +152,17 @@ interface StoreContextType {
   cancelCloudMerge: () => void;
   // Sync
   triggerSync: () => Promise<void>;
+  // Cloud Choice & Multi-Device
+  cloudChoice: CloudChoiceMode;
+  setCloudChoiceMode: (mode: CloudChoiceMode) => void;
+  probeCustomCloudConfig: (configJson: string) => Promise<{ success: boolean; projectId?: string; error?: string }>;
+  deviceId: string;
+  deviceName: string;
+  deviceSessions: DeviceSession[];
+  signOutElsewhere: () => Promise<void>;
+  // Conflict Manners
+  simulateOrderConflict: (orderId: string) => void;
+  resolveOrderConflict: (orderId: string, resolution: 'keep_a' | 'keep_b' | 'merge') => void;
 }
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -217,6 +236,66 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [isConfigOverridden, setIsConfigOverridden] = useState<boolean>(() => {
     return getActiveEstateConfig().isOverridden;
+  });
+
+  const [deviceId] = useState<string>(() => {
+    try {
+      let id = localStorage.getItem(STORAGE_KEYS.DEVICE_ID);
+      if (!id) {
+        id = `dev_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`;
+        localStorage.setItem(STORAGE_KEYS.DEVICE_ID, id);
+      }
+      return id;
+    } catch {
+      return `dev_${Date.now().toString(36)}`;
+    }
+  });
+
+  const [deviceName] = useState<string>(() => {
+    if (typeof navigator === 'undefined') return 'Merchant Terminal';
+    const ua = navigator.userAgent;
+    if (/iPad|iPhone|iPod/.test(ua)) return 'iPhone / iPad';
+    if (/Android/.test(ua)) return 'Android Device';
+    if (/Macintosh/.test(ua)) return 'Mac Desktop';
+    if (/Windows/.test(ua)) return 'Windows Terminal';
+    if (/Linux/.test(ua)) return 'Linux Station';
+    return 'Shop Counter';
+  });
+
+  const [cloudChoice, setCloudChoice] = useState<CloudChoiceMode>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CLOUD_CHOICE) as CloudChoiceMode;
+      if (saved === 'estate' || saved === 'custom' || saved === 'local_only') return saved;
+      return getActiveEstateConfig().isOverridden ? 'custom' : 'estate';
+    } catch {
+      return 'estate';
+    }
+  });
+
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.DEVICE_SESSIONS);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    const defaultName = typeof navigator !== 'undefined' && /Android/.test(navigator.userAgent) ? 'Android Device' : 'Shop Counter (This device)';
+    return [
+      {
+        deviceId: 'dev_current',
+        deviceName: defaultName,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        lastSync: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        isCurrent: true
+      },
+      {
+        deviceId: 'dev_est_counter_01',
+        deviceName: 'Shop Counter Tablet',
+        userAgent: 'Mozilla/5.0 (Android Tablet; Mauritius Retail)',
+        lastSync: new Date(Date.now() - 1000 * 60 * 14).toISOString(),
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+        isCurrent: false
+      }
+    ];
   });
 
   // Client daily counters: writes and reads (MUT date based)
@@ -423,6 +502,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
    * (3) Telemetry leg 'cloud-budget r/w' emitted at each sync drain
    */
   const triggerSync = useCallback(async () => {
+    if (cloudChoice === 'local_only') return; // Clause 2: Local Only disables all sync
     if (!isOnline || !db || syncQueue.length === 0) return;
     if (!user) return; // Clause 5: queue drain disabled while guest
     const hasMerged = localStorage.getItem(`${STORAGE_KEYS.HAS_MERGED_DEMO}_${user.uid}`) === 'true';
@@ -934,7 +1014,7 @@ Logixtix Marketing Ltd · Mauritius
 
   // Reorder loop: Supplier WhatsApp template helper (Stock Model v2)
   const generateSupplierWhatsAppUrl = useCallback((item: StockItem) => {
-    return buildSupplierWhatsAppUrl(item, profile);
+    return buildSupplierWhatsAppUrl(item, profile).url;
   }, [profile]);
 
   // Stock actions
@@ -1034,6 +1114,8 @@ Logixtix Marketing Ltd · Mauritius
           const updated: StockItem = {
             ...existing,
             brand: item.brand || existing.brand,
+            denominationUnit: item.denominationUnit || existing.denominationUnit,
+            denominationAmount: item.denominationAmount ?? existing.denominationAmount,
             currentStock: item.currentStock,
             minThreshold: item.minThreshold || existing.minThreshold,
             baseUnit: item.baseUnit || existing.baseUnit,
@@ -1132,6 +1214,148 @@ Logixtix Marketing Ltd · Mauritius
     setIsConfigOverridden(false);
   }, []);
 
+  const setCloudChoiceMode = useCallback((mode: CloudChoiceMode) => {
+    setCloudChoice(mode);
+    localStorage.setItem(STORAGE_KEYS.CLOUD_CHOICE, mode);
+    if (mode === 'estate') {
+      resetEstateConfig();
+      setIsConfigOverridden(false);
+    } else if (mode === 'custom') {
+      setIsConfigOverridden(getActiveEstateConfig().isOverridden);
+    }
+    console.info(`[telemetry] cloud-posture set to ${mode}`);
+  }, []);
+
+  const probeCustomCloudConfig = useCallback(async (configJson: string) => {
+    return probeFirebaseConfig(configJson);
+  }, []);
+
+  const signOutElsewhere = useCallback(async () => {
+    const currentSession = {
+      deviceId,
+      deviceName,
+      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      lastSync: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      isCurrent: true
+    };
+    setDeviceSessions([currentSession]);
+    localStorage.setItem(STORAGE_KEYS.DEVICE_SESSIONS, JSON.stringify([currentSession]));
+    console.info('[telemetry] device-sessions: other devices signed out');
+  }, [deviceId, deviceName]);
+
+  const simulateOrderConflict = useCallback((orderId: string) => {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId) return o;
+      const devA = {
+        source: 'Counter Tablet',
+        status: o.status,
+        items: [...o.items],
+        totalAmount: o.totalAmount,
+        updatedAt: o.updatedAt || new Date().toISOString()
+      };
+      const extraItems = o.items.length > 0
+        ? o.items.map((it, idx) => idx === 0 ? { ...it, quantity: it.quantity + 1 } : it)
+        : [{ id: 'it_extra', name: 'Phoenix Beer 650ml', quantity: 2, unitPrice: 75 }];
+      const devB = {
+        source: 'Merchant Phone',
+        status: (o.status === 'New' ? 'Preparing' : (o.status === 'Preparing' ? 'Out' : 'Delivered')) as OrderStatus,
+        items: extraItems,
+        totalAmount: o.totalAmount + 75,
+        updatedAt: new Date(Date.now() + 60000).toISOString()
+      };
+      const conflict: OrderConflictData = {
+        deviceA: devA,
+        deviceB: devB,
+        detectedAt: new Date().toISOString(),
+        conflictFields: ['status', 'items', 'totalAmount']
+      };
+      return {
+        ...o,
+        conflict
+      };
+    }));
+
+    setStockMovements(mPrev => [
+      {
+        id: `mov_${Date.now()}`,
+        itemId: `order_${orderId}`,
+        itemName: `Order ${orderId}`,
+        delta: 0,
+        previousStock: 0,
+        newStock: 0,
+        reason: 'ConflictMerge',
+        source: 'conflict_merge',
+        note: 'conflict-merge (A/B)',
+        timestamp: new Date().toISOString()
+      },
+      ...mPrev
+    ]);
+  }, []);
+
+  const resolveOrderConflict = useCallback((orderId: string, resolution: 'keep_a' | 'keep_b' | 'merge') => {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId || !o.conflict) return o;
+      const { deviceA, deviceB } = o.conflict;
+
+      let resolvedStatus = o.status;
+      let resolvedItems = o.items;
+      let resolvedTotal = o.totalAmount;
+
+      if (resolution === 'keep_a') {
+        resolvedStatus = deviceA.status;
+        resolvedItems = deviceA.items;
+        resolvedTotal = deviceA.totalAmount;
+      } else if (resolution === 'keep_b') {
+        resolvedStatus = deviceB.status;
+        resolvedItems = deviceB.items;
+        resolvedTotal = deviceB.totalAmount;
+      } else if (resolution === 'merge') {
+        const itemMap = new Map<string, OrderItem>();
+        for (const item of [...deviceA.items, ...deviceB.items]) {
+          const key = item.name.toLowerCase().trim();
+          if (itemMap.has(key)) {
+            const existing = itemMap.get(key)!;
+            itemMap.set(key, { ...existing, quantity: Math.max(existing.quantity, item.quantity) });
+          } else {
+            itemMap.set(key, { ...item });
+          }
+        }
+        resolvedItems = Array.from(itemMap.values());
+        resolvedTotal = resolvedItems.reduce((acc, it) => acc + (it.quantity * it.unitPrice), 0);
+        const pipeline: OrderStatus[] = ['New', 'Preparing', 'Out', 'Delivered', 'Paid'];
+        const idxA = pipeline.indexOf(deviceA.status);
+        const idxB = pipeline.indexOf(deviceB.status);
+        resolvedStatus = pipeline[Math.max(idxA, idxB)] || o.status;
+      }
+
+      return {
+        ...o,
+        status: resolvedStatus,
+        items: resolvedItems,
+        totalAmount: resolvedTotal,
+        conflict: undefined,
+        updatedAt: new Date().toISOString()
+      };
+    }));
+
+    setStockMovements(mPrev => [
+      {
+        id: `mov_${Date.now()}`,
+        itemId: `order_${orderId}`,
+        itemName: `Order ${orderId}`,
+        delta: 0,
+        previousStock: 0,
+        newStock: 0,
+        reason: 'ConflictMerge',
+        source: 'conflict_merge',
+        note: `conflict-merge (A/B) resolved: kept ${resolution}`,
+        timestamp: new Date().toISOString()
+      },
+      ...mPrev
+    ]);
+  }, []);
+
   // Auth functions
   const loginWithGoogle = useCallback(async () => {
     if (!auth) throw new Error("Estate Cloud auth not configured");
@@ -1219,7 +1443,16 @@ Logixtix Marketing Ltd · Mauritius
     pendingCloudMerge,
     confirmCloudMerge,
     cancelCloudMerge,
-    triggerSync
+    triggerSync,
+    cloudChoice,
+    setCloudChoiceMode,
+    probeCustomCloudConfig,
+    deviceId,
+    deviceName,
+    deviceSessions,
+    signOutElsewhere,
+    simulateOrderConflict,
+    resolveOrderConflict
   }), [
     orders,
     ledgerEntries,
@@ -1262,7 +1495,16 @@ Logixtix Marketing Ltd · Mauritius
     pendingCloudMerge,
     confirmCloudMerge,
     cancelCloudMerge,
-    triggerSync
+    triggerSync,
+    cloudChoice,
+    setCloudChoiceMode,
+    probeCustomCloudConfig,
+    deviceId,
+    deviceName,
+    deviceSessions,
+    signOutElsewhere,
+    simulateOrderConflict,
+    resolveOrderConflict
   ]);
 
   return (

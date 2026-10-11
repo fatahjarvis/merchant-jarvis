@@ -15,8 +15,11 @@ import {
   Filter,
   MessageSquare,
   Edit2,
-  Lock
+  Lock,
+  AlertTriangle,
+  GitMerge
 } from 'lucide-react';
+import { ConflictResolutionModal } from '../components/ConflictResolutionModal';
 
 interface OrdersScreenProps {
   onOpenNewOrder: () => void;
@@ -39,9 +42,10 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   onSelectOrder,
   onEditOrder
 }) => {
-  const { orders, generateWhatsAppUrl } = useStore();
+  const { orders, generateWhatsAppUrl, simulateOrderConflict, resolveOrderConflict } = useStore();
   const [activeFilter, setActiveFilter] = useState<'All' | OrderStatus>('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [conflictModalOrder, setConflictModalOrder] = useState<Order | null>(null);
 
   const filteredOrders = useMemo(() => {
     return orders.filter(ord => {
@@ -159,12 +163,47 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
                   </div>
                 </div>
 
+                {/* Conflict Banner if present */}
+                {order.conflict && (
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConflictModalOrder(order);
+                    }}
+                    className="bg-amber-950/70 border border-amber-800 rounded-xl p-2.5 flex items-center justify-between text-xs text-amber-300 shadow-md animate-pulse cursor-pointer hover:brightness-110"
+                  >
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <div>
+                        <span className="font-bold block">conflict-merge (A/B) detected</span>
+                        <span className="text-[10px] font-mono text-amber-400/90">Tap to resolve conflicting edits</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-lg bg-amber-900 text-amber-100 font-bold text-[10px] font-mono">
+                      Resolve
+                    </span>
+                  </div>
+                )}
+
                 {/* Items preview and Actions */}
                 <div className="text-xs text-slate-400 bg-slate-950/60 rounded-xl px-3 py-2 border border-slate-900 flex items-center justify-between">
                   <span className="truncate pr-2">
                     {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
+                    {!order.conflict && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          simulateOrderConflict(order.id);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 border border-amber-900/60 text-amber-400 text-[10px] font-mono font-semibold transition"
+                        title="Simulate concurrent order edit conflict"
+                      >
+                        Sim. Conflict
+                      </button>
+                    )}
                     {order.status !== 'Paid' ? (
                       <button
                         type="button"
@@ -197,6 +236,17 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
           })
         )}
       </div>
+
+      {/* Conflict Resolution Modal */}
+      <ConflictResolutionModal
+        order={conflictModalOrder}
+        isOpen={Boolean(conflictModalOrder)}
+        onClose={() => setConflictModalOrder(null)}
+        onResolve={(orderId, resolution) => {
+          resolveOrderConflict(orderId, resolution);
+          setConflictModalOrder(null);
+        }}
+      />
 
       {/* Floating "+ New order" Button in thumb reach (≥44px, bottom-right above tab bar) */}
       <button

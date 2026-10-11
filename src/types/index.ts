@@ -27,6 +27,7 @@ export interface Order {
   notes?: string;
   createdAt: string;
   updatedAt: string;
+  conflict?: OrderConflictData;
 }
 
 export type LedgerCategory = 'Sale' | 'Expense' | 'Stock';
@@ -84,14 +85,48 @@ export interface StockItem {
   category: string;
   supplier?: string;
   supplierPhone?: string;
+  denominationUnit?: string; // 'ml', 'L', 'g', 'Kg'
+  denominationAmount?: number; // e.g. 5, 650
   updatedAt?: string;
   // Backward compatibility aliases
   unit?: string;
   costPrice?: number;
   sellingPrice?: number;
+  unitMeasure?: string;
+  unitMeasureAmount?: number;
 }
 
-export type StockAdjustReason = 'Count' | 'Damage' | 'Return' | 'Sale' | 'Restock';
+export type CloudChoiceMode = 'estate' | 'custom' | 'local_only';
+
+export interface DeviceSession {
+  deviceId: string;
+  deviceName: string;
+  userAgent?: string;
+  lastSync: string;
+  createdAt: string;
+  isCurrent?: boolean;
+}
+
+export interface OrderConflictData {
+  deviceA: {
+    source: string;
+    status: OrderStatus;
+    items: OrderItem[];
+    totalAmount: number;
+    updatedAt: string;
+  };
+  deviceB: {
+    source: string;
+    status: OrderStatus;
+    items: OrderItem[];
+    totalAmount: number;
+    updatedAt: string;
+  };
+  detectedAt: string;
+  conflictFields: string[];
+}
+
+export type StockAdjustReason = 'Count' | 'Damage' | 'Return' | 'Sale' | 'Restock' | 'ConflictMerge';
 
 export interface StockMovement {
   id: string;
@@ -101,7 +136,7 @@ export interface StockMovement {
   previousStock: number;
   newStock: number;
   reason: StockAdjustReason;
-  source: 'manual' | 'door1_csv' | 'door2_vision' | 'door3_voice' | 'sale_deduct' | 'ledger_restock';
+  source: 'manual' | 'door1_csv' | 'door2_vision' | 'door3_voice' | 'sale_deduct' | 'ledger_restock' | 'conflict_merge';
   note?: string;
   timestamp: string;
 }
@@ -109,6 +144,8 @@ export interface StockMovement {
 export interface StockImportPreviewRow {
   name: string;
   brand?: string;
+  denominationUnit?: string; // 'ml', 'L', 'g', 'Kg'
+  denominationAmount?: number; // e.g. 5, 650
   currentStock: number;
   minThreshold: number;
   baseUnit: string;
@@ -127,10 +164,14 @@ export interface StockImportPreviewRow {
   isNewCategory?: boolean;
   isNewBaseUnit?: boolean;
   isNewSellingFormat?: boolean;
+  isNewBrand?: boolean;
+  isNewDenominationUnit?: boolean;
   // Backward compatibility aliases
   unit?: string;
   costPrice?: number;
   sellingPrice?: number;
+  unitMeasure?: string;
+  unitMeasureAmount?: number;
 }
 
 export interface MerchantProfile {

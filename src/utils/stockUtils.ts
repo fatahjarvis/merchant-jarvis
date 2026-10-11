@@ -2,6 +2,34 @@ import * as XLSX from 'xlsx';
 import { StockItem, StockStatusChip, StockImportPreviewRow, MerchantProfile } from '../types';
 import { GoogleGenAI } from '@google/genai';
 
+export const STANDARD_MEASURE_UNITS = [
+  'ml',
+  'L',
+  'g',
+  'Kg',
+  'cl',
+  'mg',
+  'pcs'
+];
+
+export const STANDARD_BRANDS = [
+  'Maharani',
+  'Phoenix',
+  'Twinings',
+  'Anchor',
+  'Nestle',
+  'Kraft',
+  'Doritos',
+  'Coca-Cola',
+  'Dodo',
+  'Ciel',
+  'Bois Chéri',
+  'Pearle',
+  'Milo',
+  'Les Moulins',
+  'Eagle'
+];
+
 export const STANDARD_BASE_UNITS = [
   'units',
   'bags',
@@ -62,6 +90,23 @@ export function getStockChipColor(status: StockStatusChip): { bg: string; text: 
 
 /**
  * TEMPLATE V2: Lazy-loaded ExcelJS with LISTS sheet & data validation dropdowns
+ * Schema:
+ * A: Item Name
+ * B: Unit (dropdown: ml, L, g, Kg from LISTS)
+ * C: Amount (e.g. 5 for 5 Kg, 650 for 650 ml)
+ * D: Brand (dropdown from LISTS)
+ * E: Current Stock
+ * F: Min Threshold
+ * G: Base Unit (dropdown from LISTS)
+ * H: Selling Format (dropdown: unit, pack from LISTS)
+ * I: Pack Contains
+ * J: Unit Cost (Rs)
+ * K: Pack Cost (Rs)
+ * L: Unit Price (Rs)
+ * M: Pack Price (Rs)
+ * N: Category (dropdown from LISTS)
+ * O: Supplier
+ * P: Supplier Phone
  */
 export async function downloadStockExcelTemplateV2(): Promise<void> {
   const ExcelJSModule = await import('exceljs');
@@ -74,6 +119,8 @@ export async function downloadStockExcelTemplateV2(): Promise<void> {
   const sheet = workbook.addWorksheet('Stock Template');
   sheet.columns = [
     { header: 'Item Name', key: 'name', width: 28 },
+    { header: 'Unit', key: 'unit', width: 14 },
+    { header: 'Amount', key: 'amount', width: 14 },
     { header: 'Brand', key: 'brand', width: 18 },
     { header: 'Current Stock', key: 'currentStock', width: 14 },
     { header: 'Min Threshold', key: 'minThreshold', width: 14 },
@@ -89,9 +136,11 @@ export async function downloadStockExcelTemplateV2(): Promise<void> {
     { header: 'Supplier Phone', key: 'supplierPhone', width: 18 }
   ];
 
-  // Two example rows
+  // Two example rows matching merchant specifications
   sheet.addRow({
     name: 'Basmati Rice 5kg',
+    unit: 'Kg',
+    amount: 5,
     brand: 'Maharani',
     currentStock: 15,
     minThreshold: 5,
@@ -109,6 +158,8 @@ export async function downloadStockExcelTemplateV2(): Promise<void> {
 
   sheet.addRow({
     name: 'Phoenix Beer 650ml',
+    unit: 'ml',
+    amount: 650,
     brand: 'Phoenix',
     currentStock: 24,
     minThreshold: 6,
@@ -127,12 +178,16 @@ export async function downloadStockExcelTemplateV2(): Promise<void> {
   // Sheet 2: LISTS
   const listsSheet = workbook.addWorksheet('LISTS');
   listsSheet.columns = [
-    { header: 'Units', key: 'units', width: 16 },
-    { header: 'Categories', key: 'categories', width: 18 },
+    { header: 'Units', key: 'units', width: 14 },
+    { header: 'Brands', key: 'brands', width: 20 },
+    { header: 'Base Units', key: 'baseUnits', width: 16 },
+    { header: 'Categories', key: 'categories', width: 22 },
     { header: 'Formats', key: 'formats', width: 14 }
   ];
 
   const maxLen = Math.max(
+    STANDARD_MEASURE_UNITS.length,
+    STANDARD_BRANDS.length,
     STANDARD_BASE_UNITS.length,
     STANDARD_CATEGORIES.length,
     STANDARD_SELLING_FORMATS.length
@@ -140,28 +195,45 @@ export async function downloadStockExcelTemplateV2(): Promise<void> {
 
   for (let i = 0; i < maxLen; i++) {
     listsSheet.addRow({
-      units: STANDARD_BASE_UNITS[i] || '',
+      units: STANDARD_MEASURE_UNITS[i] || '',
+      brands: STANDARD_BRANDS[i] || '',
+      baseUnits: STANDARD_BASE_UNITS[i] || '',
       categories: STANDARD_CATEGORIES[i] || '',
       formats: STANDARD_SELLING_FORMATS[i] || ''
     });
   }
 
-  // Add dropdown validations on Stock Template rows (columns E, F, L)
-  for (let r = 2; r <= 200; r++) {
-    sheet.getCell(`E${r}`).dataValidation = {
+  // Add dropdown validations on Stock Template rows (configured & editable under sheet 'LISTS')
+  // B: Unit -> LISTS A2:A50
+  // D: Brand -> LISTS B2:B100
+  // G: Base Unit -> LISTS C2:C50
+  // H: Selling Format -> LISTS E2:E10
+  // N: Category -> LISTS D2:D50
+  for (let r = 2; r <= 300; r++) {
+    sheet.getCell(`B${r}`).dataValidation = {
       type: 'list',
       allowBlank: true,
-      formulae: [`'LISTS'!$A$2:$A$${STANDARD_BASE_UNITS.length + 1}`]
+      formulae: [`'LISTS'!$A$2:$A$50`]
     };
-    sheet.getCell(`F${r}`).dataValidation = {
+    sheet.getCell(`D${r}`).dataValidation = {
       type: 'list',
       allowBlank: true,
-      formulae: [`'LISTS'!$C$2:$C$${STANDARD_SELLING_FORMATS.length + 1}`]
+      formulae: [`'LISTS'!$B$2:$B$100`]
     };
-    sheet.getCell(`L${r}`).dataValidation = {
+    sheet.getCell(`G${r}`).dataValidation = {
       type: 'list',
       allowBlank: true,
-      formulae: [`'LISTS'!$B$2:$B$${STANDARD_CATEGORIES.length + 1}`]
+      formulae: [`'LISTS'!$C$2:$C$50`]
+    };
+    sheet.getCell(`H${r}`).dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [`'LISTS'!$E$2:$E$10`]
+    };
+    sheet.getCell(`N${r}`).dataValidation = {
+      type: 'list',
+      allowBlank: true,
+      formulae: [`'LISTS'!$D$2:$D$50`]
     };
   }
 
@@ -185,6 +257,8 @@ export async function downloadStockExcelTemplateV2(): Promise<void> {
 export function generateStockCsvTemplate(): string {
   const headers = [
     'Item Name',
+    'Unit',
+    'Amount',
     'Brand',
     'Current Stock',
     'Min Threshold',
@@ -199,8 +273,8 @@ export function generateStockCsvTemplate(): string {
     'Supplier',
     'Supplier Phone'
   ];
-  const row1 = ['Basmati Rice 5kg', 'Maharani', '15', '5', 'bags', 'unit', '1', '280', '280', '345', '345', 'Staples', 'Maharani Traders Ltd', '+23057110022'];
-  const row2 = ['Phoenix Beer 650ml', 'Phoenix', '24', '6', 'bottles', 'pack', '12', '60', '720', '75', '890', 'Beverages', 'Phoenix Beverages Ltd', '+23052508899'];
+  const row1 = ['Basmati Rice 5kg', 'Kg', '5', 'Maharani', '15', '5', 'bags', 'unit', '1', '280', '280', '345', '345', 'Staples', 'Maharani Traders Ltd', '+23057110022'];
+  const row2 = ['Phoenix Beer 650ml', 'ml', '650', 'Phoenix', '24', '6', 'bottles', 'pack', '12', '60', '720', '75', '890', 'Beverages', 'Phoenix Beverages Ltd', '+23052508899'];
   return [headers.join(','), row1.join(','), row2.join(',')].join('\n');
 }
 
@@ -229,6 +303,8 @@ export async function parseStockFile(file: File): Promise<{ rows: StockImportPre
 
   // Read LISTS sheet if present to accept merchant-extended values
   const knownUnits = new Set(STANDARD_BASE_UNITS.map(u => u.toLowerCase().trim()));
+  const knownDenominationUnits = new Set(STANDARD_MEASURE_UNITS.map(u => u.toLowerCase().trim()));
+  const knownBrands = new Set(STANDARD_BRANDS.map(b => b.toLowerCase().trim()));
   const knownCategories = new Set(STANDARD_CATEGORIES.map(c => c.toLowerCase().trim()));
   const knownFormats = new Set(['unit', 'pack']);
 
@@ -237,12 +313,18 @@ export async function parseStockFile(file: File): Promise<{ rows: StockImportPre
     const listsData: any[] = XLSX.utils.sheet_to_json(listsSheet, { defval: '' });
     for (const r of listsData) {
       for (const [k, v] of Object.entries(r)) {
-        const strVal = String(v || '').trim().toLowerCase();
+        const strVal = String(v || '').trim();
         if (!strVal) continue;
+        const strLower = strVal.toLowerCase();
         const keyLower = k.toLowerCase();
-        if (keyLower.includes('unit')) knownUnits.add(strVal);
-        if (keyLower.includes('cat')) knownCategories.add(strVal);
-        if (keyLower.includes('format')) knownFormats.add(strVal);
+        if (keyLower.includes('brand')) knownBrands.add(strLower);
+        else if (keyLower.includes('base') || keyLower === 'base units') knownUnits.add(strLower);
+        else if (keyLower.includes('unit') || keyLower.includes('measure')) {
+          knownDenominationUnits.add(strLower);
+          knownUnits.add(strLower);
+        }
+        else if (keyLower.includes('cat')) knownCategories.add(strLower);
+        else if (keyLower.includes('format')) knownFormats.add(strLower);
       }
     }
   }
@@ -266,9 +348,24 @@ export async function parseStockFile(file: File): Promise<{ rows: StockImportPre
 
     const name = String(normalized.itemname || normalized.name || normalized.item || normalized.article || '').trim();
     const brand = String(normalized.brand || normalized.marque || '').trim();
+    
+    // Denomination Unit (ml, L, g, Kg) and Amount
+    const denominationUnit = String(normalized.unit || normalized.denominationunit || normalized.measureunit || '').trim();
+    const rawAmount = normalized.amount ?? normalized.denominationamount ?? normalized.unitamount ?? normalized.qtyperunit;
+    const denominationAmount = rawAmount !== undefined && rawAmount !== '' ? parseFloat(String(rawAmount)) : undefined;
+
     const currentStock = parseFloat(String(normalized.currentstock ?? normalized.stock ?? normalized.qty ?? normalized.quantity ?? 0));
     const minThreshold = parseFloat(String(normalized.minthreshold ?? normalized.min ?? normalized.minimum ?? 5));
-    const baseUnit = String(normalized.baseunit || normalized.unit || normalized.uom || 'units').trim();
+    
+    // Base unit (handles baseunit or fallback if only unit was provided in older templates)
+    let baseUnit = String(normalized.baseunit || normalized.uom || '').trim();
+    if (!baseUnit) {
+      if (denominationUnit && knownUnits.has(denominationUnit.toLowerCase()) && !['ml', 'l', 'g', 'kg', 'cl', 'mg'].includes(denominationUnit.toLowerCase())) {
+        baseUnit = denominationUnit;
+      } else {
+        baseUnit = 'units';
+      }
+    }
     
     const rawFormat = String(normalized.sellingformat || normalized.format || 'unit').toLowerCase().trim();
     const sellingFormat: 'unit' | 'pack' = rawFormat === 'pack' ? 'pack' : 'unit';
@@ -287,6 +384,8 @@ export async function parseStockFile(file: File): Promise<{ rows: StockImportPre
     const isNewCategory = Boolean(category && !knownCategories.has(category.toLowerCase()));
     const isNewBaseUnit = Boolean(baseUnit && !knownUnits.has(baseUnit.toLowerCase()));
     const isNewSellingFormat = Boolean(rawFormat && !knownFormats.has(rawFormat.toLowerCase()));
+    const isNewBrand = Boolean(brand && !knownBrands.has(brand.toLowerCase()));
+    const isNewDenominationUnit = Boolean(denominationUnit && !knownDenominationUnits.has(denominationUnit.toLowerCase()));
 
     let isValid = true;
     let validationError = '';
@@ -305,6 +404,8 @@ export async function parseStockFile(file: File): Promise<{ rows: StockImportPre
     return {
       name: name || `Unnamed Row ${idx + 1}`,
       brand: brand || undefined,
+      denominationUnit: denominationUnit || undefined,
+      denominationAmount: !isNaN(Number(denominationAmount)) ? denominationAmount : undefined,
       currentStock: isNaN(currentStock) ? 0 : currentStock,
       minThreshold: isNaN(minThreshold) ? 5 : minThreshold,
       baseUnit: baseUnit || 'units',
@@ -323,10 +424,14 @@ export async function parseStockFile(file: File): Promise<{ rows: StockImportPre
       isNewCategory,
       isNewBaseUnit,
       isNewSellingFormat,
+      isNewBrand,
+      isNewDenominationUnit,
       // Backward compat aliases
       unit: baseUnit || 'units',
       costPrice: unitCost,
-      sellingPrice: unitPrice
+      sellingPrice: unitPrice,
+      unitMeasure: denominationUnit || undefined,
+      unitMeasureAmount: denominationAmount
     };
   }).filter(r => r.name || r.currentStock > 0);
 
@@ -354,30 +459,34 @@ export async function extractStockFromImage(imageFile: File): Promise<{ rows: St
     const prompt = `
 You are an expert grocery inventory OCR parser for Mauritian retailer sheets.
 Analyze this photographed stock sheet or handwritten shop ledger.
-Extract inventory items including brand and pack details when visible.
+Extract inventory items including brand, unit denomination (ml, L, g, Kg), amount, and pack details when visible.
 Output a clean JSON array with exact fields:
 [
   {
-    "name": "Item name e.g. Phoenix Beer 650ml",
-    "brand": "Phoenix",
-    "currentStock": 24,
-    "minThreshold": 6,
-    "baseUnit": "bottles",
-    "sellingFormat": "pack",
-    "packContains": 12,
-    "unitCost": 60,
-    "packCost": 720,
-    "unitPrice": 75,
-    "packPrice": 890,
-    "category": "Beverages",
-    "supplier": "Phoenix Beverages Ltd",
-    "supplierPhone": "+230 5250 8899",
+    "name": "Basmati Rice 5kg",
+    "denominationUnit": "Kg",
+    "denominationAmount": 5,
+    "brand": "Maharani",
+    "currentStock": 15,
+    "minThreshold": 5,
+    "baseUnit": "bags",
+    "sellingFormat": "unit",
+    "packContains": 1,
+    "unitCost": 280,
+    "packCost": 280,
+    "unitPrice": 345,
+    "packPrice": 345,
+    "category": "Staples",
+    "supplier": "Maharani Traders Ltd",
+    "supplierPhone": "+230 5711 0022",
     "confidence": 0.95
   }
 ]
 Field guidelines:
+- denominationUnit is the measure unit on package (ml, L, g, Kg).
+- denominationAmount is the number for that unit (e.g. 5 for 5 Kg, 650 for 650 ml).
 - sellingFormat is either "unit" or "pack". Default "unit" if sold singly.
-- baseUnit is base measure (bottles, bags, kg, crates, tins, packs, units).
+- baseUnit is inventory counting measure (bottles, bags, kg, crates, tins, packs, units).
 - Return ONLY valid JSON without markdown fences.
 `;
 
@@ -410,9 +519,11 @@ Field guidelines:
     const rows: StockImportPreviewRow[] = parsed.map((item: any, idx: number) => {
       const name = String(item.name || '').trim();
       const brand = String(item.brand || '').trim();
+      const denominationUnit = String(item.denominationUnit || item.unit || '').trim();
+      const denominationAmount = Number(item.denominationAmount || item.amount) || undefined;
       const currentStock = Number(item.currentStock ?? 0);
       const minThreshold = Number(item.minThreshold ?? 5);
-      const baseUnit = String(item.baseUnit || item.unit || 'units').trim();
+      const baseUnit = String(item.baseUnit || 'units').trim();
       const sellingFormat: 'unit' | 'pack' = item.sellingFormat === 'pack' ? 'pack' : 'unit';
       const packContains = Number(item.packContains ?? 1) || 1;
       const unitCost = Number(item.unitCost ?? item.costPrice ?? 0);
@@ -429,6 +540,8 @@ Field guidelines:
       return {
         name: name || `Row ${idx + 1}`,
         brand: brand || undefined,
+        denominationUnit: denominationUnit || undefined,
+        denominationAmount,
         currentStock: isNaN(currentStock) ? 0 : currentStock,
         minThreshold: isNaN(minThreshold) ? 5 : minThreshold,
         baseUnit: baseUnit || 'units',
@@ -446,72 +559,59 @@ Field guidelines:
         confidence,
         unit: baseUnit || 'units',
         costPrice: unitCost,
-        sellingPrice: unitPrice
+        sellingPrice: unitPrice,
+        unitMeasure: denominationUnit || undefined,
+        unitMeasureAmount: denominationAmount
       };
     });
 
     return { rows };
   } catch (err: any) {
-    console.warn("Vision extraction failed:", err);
-    throw new Error(err.message || 'Door 2 Vision quota interrupted. Fallback to Door 1 (Upload CSV/Excel).');
+    console.error('Vision extraction stumble:', err);
+    throw new Error(err.message || 'Vision model stumble reading stock sheet.');
   }
 }
 
 /**
- * REORDER LOOP: Supplier WhatsApp Link Generator with whole packs rounding & wording polish
+ * Reorder suggestion rounded up to whole packs for supplier wa.me
  */
 export function generateSupplierWhatsAppUrl(
   item: StockItem,
-  profile: MerchantProfile
-): string {
-  // Reorder suggestion rounds up to whole packs
-  let reorderQty: number;
-  let unitLabel: string;
+  profile: MerchantProfile,
+  customTemplate?: string
+): { url: string; preview: string; reorderQty: number; unitLabel: string } {
+  const isPack = item.sellingFormat === 'pack';
+  const packSize = item.packContains && item.packContains > 0 ? item.packContains : 1;
 
-  if (item.sellingFormat === 'pack' && item.packContains && item.packContains > 1) {
-    const deficitBase = Math.max(1, (item.minThreshold * item.packContains * 2) - item.currentStock);
-    const packs = Math.max(1, Math.ceil(deficitBase / item.packContains));
-    reorderQty = packs;
+  let reorderQty = 0;
+  let unitLabel = '';
+
+  if (isPack) {
+    const currentPacks = Math.floor(item.currentStock / packSize);
+    const deficitPacks = Math.max(1, item.minThreshold - currentPacks);
+    reorderQty = deficitPacks;
     unitLabel = 'packs';
   } else {
-    reorderQty = Math.max(1, (item.minThreshold * 2) - item.currentStock);
+    reorderQty = Math.max(1, item.minThreshold - item.currentStock);
     unitLabel = item.baseUnit || 'units';
   }
 
-  const supplierName = item.supplier || 'Distributor';
-  let phone = (item.supplierPhone || '').replace(/\D/g, '');
-  if (phone.length === 8 && (phone.startsWith('5') || phone.startsWith('6'))) {
-    phone = `230${phone}`;
-  }
+  const defaultTemplate = 'Bonzour {supplier}, this is {shopName}. Please supply {qty} {unit} of {item} ({brand}). Mersi!';
+  const template = customTemplate || defaultTemplate;
 
-  // Wording polish: default supplier template becomes
-  // '…please supply {qty} {unit} of {item} ({brand})…' (no 'bags units' doubling)
-  const template = profile.whatsappTemplateSupplier || 
-    'Bonzour {supplier}, this is {shopName}. Please supply {qty} {unit} of {item} ({brand}). Mersi!';
-
-  const brandReplacement = item.brand ? item.brand : '';
-  let message = template
-    .replace('{supplier}', supplierName)
-    .replace('{item}', item.name)
-    .replace('{qty}', `${reorderQty}`)
+  const phone = (item.supplierPhone || '').replace(/[^0-9+]/g, '');
+  const brandDisplay = item.brand || 'standard';
+  
+  const text = template
+    .replace('{supplier}', item.supplier || 'Supplier')
+    .replace('{shopName}', profile.shopName || 'Merchant Jarvis')
+    .replace('{qty}', String(reorderQty))
     .replace('{unit}', unitLabel)
-    .replace('{shopName}', profile.shopName);
+    .replace('{item}', item.name)
+    .replace('{brand}', brandDisplay);
 
-  if (brandReplacement) {
-    message = message.replace('{brand}', brandReplacement);
-  } else {
-    // If brand is empty, cleanly strip " ({brand})" or "({brand})"
-    message = message
-      .replace(/\s*\({brand}\)/g, '')
-      .replace(/{brand}/g, '');
-  }
+  const encoded = encodeURIComponent(text);
+  const url = phone ? `https://wa.me/${phone}?text=${encoded}` : `https://wa.me/?text=${encoded}`;
 
-  // Ensure no duplicate 'units units' or 'bags units'
-  message = message.replace(/\s+/g, ' ').trim();
-
-  if (!phone) {
-    return `https://wa.me/?text=${encodeURIComponent(message)}`;
-  }
-
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  return { url, preview: text, reorderQty, unitLabel };
 }

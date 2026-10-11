@@ -2,7 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { StockItem, StockAdjustReason } from '../types';
 import { useStore } from '../context/StoreContext';
 import { formatRs } from '../utils/mauritiusTime';
-import { getStockStatusChip, getSellingFormatQty } from '../utils/stockUtils';
+import { 
+  getStockStatusChip, 
+  getSellingFormatQty, 
+  STANDARD_MEASURE_UNITS, 
+  STANDARD_BRANDS 
+} from '../utils/stockUtils';
 import { 
   X, 
   Save, 
@@ -50,6 +55,8 @@ export const StockItemSheet: React.FC<StockItemSheetProps> = ({
   const [packCost, setPackCost] = useState<number>(0);
   const [unitPrice, setUnitPrice] = useState<number>(0);
   const [packPrice, setPackPrice] = useState<number>(0);
+  const [denominationUnit, setDenominationUnit] = useState('');
+  const [denominationAmount, setDenominationAmount] = useState<number | ''>('');
   const [supplier, setSupplier] = useState('');
   const [supplierPhone, setSupplierPhone] = useState('');
   
@@ -63,6 +70,8 @@ export const StockItemSheet: React.FC<StockItemSheetProps> = ({
     if (item) {
       setName(item.name || '');
       setBrand(item.brand || '');
+      setDenominationUnit(item.denominationUnit || item.unitMeasure || '');
+      setDenominationAmount(item.denominationAmount ?? item.unitMeasureAmount ?? '');
       setCategory(item.category || 'General');
       setBaseUnit(item.baseUnit || item.unit || 'units');
       setSellingFormat(item.sellingFormat || 'unit');
@@ -100,6 +109,10 @@ export const StockItemSheet: React.FC<StockItemSheetProps> = ({
     updateStockItemDetails(item.id, {
       name: name.trim(),
       brand: brand.trim() || undefined,
+      denominationUnit: denominationUnit.trim() || undefined,
+      denominationAmount: denominationAmount !== '' ? Number(denominationAmount) : undefined,
+      unitMeasure: denominationUnit.trim() || undefined,
+      unitMeasureAmount: denominationAmount !== '' ? Number(denominationAmount) : undefined,
       category: category.trim(),
       baseUnit: baseUnit.trim(),
       sellingFormat,
@@ -363,12 +376,53 @@ export const StockItemSheet: React.FC<StockItemSheetProps> = ({
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-medium block mb-1">Brand</label>
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    list="stock-brands-list"
+                    value={brand}
+                    onChange={e => setBrand(e.target.value)}
+                    placeholder="e.g. Phoenix, Maharani"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500"
+                  />
+                  <datalist id="stock-brands-list">
+                    {STANDARD_BRANDS.map(b => (
+                      <option key={b} value={b} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+            </div>
+
+            {/* Unit Denomination (ml, L, g, Kg) & Amount */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-slate-400 font-medium block mb-1">Unit Denomination</label>
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    list="stock-measure-units-list"
+                    value={denominationUnit}
+                    onChange={e => setDenominationUnit(e.target.value)}
+                    placeholder="e.g. Kg, ml, L, g"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-cyan-300 font-mono outline-none focus:border-cyan-500"
+                  />
+                  <datalist id="stock-measure-units-list">
+                    {STANDARD_MEASURE_UNITS.map(u => (
+                      <option key={u} value={u} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-400 font-medium block mb-1">Unit Amount</label>
                 <input
-                  type="text"
-                  value={brand}
-                  onChange={e => setBrand(e.target.value)}
-                  placeholder="e.g. Phoenix, Les Moulins"
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-500"
+                  type="number"
+                  step="any"
+                  value={denominationAmount}
+                  onChange={e => setDenominationAmount(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                  placeholder="e.g. 5 (for 5 Kg)"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 font-mono outline-none focus:border-cyan-500"
                 />
               </div>
             </div>

@@ -5,6 +5,6 @@
  */
 
 export const MJARVIS_SEMVER = 'v1.0.1';
-export const MJARVIS_SHOWROOM = 'jarvismu.com';
-export const MJARVIS_STAMP = '2610111331';
+export const MJARVIS_SHOWROOM = 'https://jarvismu.com';
+export const MJARVIS_STAMP = '2610111520';
 export const MJARVIS_FULL_BRAND_STAMP = `Merchant Jarvis ${MJARVIS_SEMVER}-${MJARVIS_STAMP}`;

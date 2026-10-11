@@ -26,7 +26,8 @@ import {
   Upload,
   Camera,
   Search,
-  ChevronRight
+  ChevronRight,
+  CloudOff
 } from 'lucide-react';
 import { Order, StockItem, StockStatusChip } from '../types';
 import { getStockStatusChip, getSellingFormatQty } from '../utils/stockUtils';
@@ -56,6 +57,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     stockItems, 
     profile, 
     user,
+    cloudChoice,
     generateWhatsAppUrl,
     generateSupplierWhatsAppUrl 
   } = useStore();
@@ -116,8 +118,27 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
         </p>
       </div>
 
-      {/* Clause 5: GUEST HONESTY banner on signed-out Today */}
-      {!user && (
+      {/* Clause 2: Local Only banner OR Clause 5: Guest Honesty banner */}
+      {cloudChoice === 'local_only' ? (
+        <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border border-slate-700/80 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-lg animate-in fade-in">
+          <div className="flex items-center gap-2.5 text-xs text-slate-300">
+            <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 shrink-0">
+              <CloudOff className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div>
+              <span className="font-bold text-slate-200 block">Local Only — your shop, your device</span>
+              <span className="text-[11px] text-slate-400">All cloud sync disabled. Data lives strictly on this device.</span>
+            </div>
+          </div>
+          <button
+            onClick={() => onSelectTab('menu')}
+            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-cyan-300 text-xs font-semibold shrink-0 transition"
+            style={{ minHeight: '38px' }}
+          >
+            Cloud Choice
+          </button>
+        </div>
+      ) : !user ? (
         <div className="bg-gradient-to-r from-[#061e38] via-slate-900 to-[#07243b] border border-cyan-800/80 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-lg animate-in fade-in">
           <div className="text-xs text-slate-200">
             <span className="font-bold text-cyan-300 block mb-0.5">Guest mode</span>
@@ -131,7 +152,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
             Sign in
           </button>
         </div>
-      )}
+      ) : null}
 
       {/* Quick Action Shortcuts - Thumb Reach */}
       <div className="grid grid-cols-3 gap-2">

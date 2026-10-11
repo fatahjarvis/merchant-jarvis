@@ -4,7 +4,9 @@ import { useStore } from '../context/StoreContext';
 import { 
   downloadStockExcelTemplateV2, 
   parseStockFile, 
-  extractStockFromImage 
+  extractStockFromImage,
+  STANDARD_MEASURE_UNITS,
+  STANDARD_BRANDS
 } from '../utils/stockUtils';
 import { 
   X, 
@@ -156,6 +158,8 @@ export const StockImportModal: React.FC<StockImportModalProps> = ({
     const itemsToMerge = validRows.map(r => ({
       name: r.name,
       brand: r.brand,
+      denominationUnit: r.denominationUnit || r.unitMeasure,
+      denominationAmount: r.denominationAmount ?? r.unitMeasureAmount,
       currentStock: r.currentStock,
       minThreshold: r.minThreshold,
       baseUnit: r.baseUnit || r.unit || 'units',
@@ -399,15 +403,28 @@ export const StockImportModal: React.FC<StockImportModalProps> = ({
 
               {/* Table Container */}
               <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
+                <datalist id="denomination-units-list">
+                  {STANDARD_MEASURE_UNITS.map(u => (
+                    <option key={u} value={u} />
+                  ))}
+                </datalist>
+                <datalist id="brands-list">
+                  {STANDARD_BRANDS.map(b => (
+                    <option key={b} value={b} />
+                  ))}
+                </datalist>
+
                 <div className="overflow-x-auto max-h-72">
                   <table className="w-full text-left text-xs text-slate-300">
                     <thead className="bg-slate-900/90 text-[11px] text-slate-400 font-mono uppercase tracking-wider sticky top-0 border-b border-slate-800">
                       <tr>
                         <th className="p-2.5">Status</th>
                         <th className="p-2.5">Item Name</th>
+                        <th className="p-2.5">Unit</th>
+                        <th className="p-2.5">Amount</th>
                         <th className="p-2.5">Brand</th>
                         <th className="p-2.5">Stock</th>
-                        <th className="p-2.5">Unit</th>
+                        <th className="p-2.5">Base Unit</th>
                         <th className="p-2.5">Format</th>
                         <th className="p-2.5">Min</th>
                         <th className="p-2.5">Cost</th>
@@ -445,15 +462,60 @@ export const StockImportModal: React.FC<StockImportModalProps> = ({
                             />
                           </td>
 
-                          {/* Brand */}
+                          {/* Unit (ml, L, g, Kg with dropdown list) */}
+                          <td className="p-2.5">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                list="denomination-units-list"
+                                value={row.denominationUnit || ''}
+                                placeholder="e.g. Kg"
+                                onChange={e => handleUpdateRow(idx, 'denominationUnit', e.target.value)}
+                                className="bg-transparent border-b border-transparent focus:border-cyan-500 font-mono text-cyan-300 outline-none w-14"
+                              />
+                              {row.isNewDenominationUnit && (
+                                <span 
+                                  title="New denomination unit not found in standard Lists" 
+                                  className="text-[9px] bg-amber-950 text-amber-300 border border-amber-800 px-1 py-0.2 rounded font-mono shrink-0"
+                                >
+                                  new — add to Lists
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Amount (e.g. 5 for 5 Kg, 650 for 650 ml) */}
                           <td className="p-2.5">
                             <input
-                              type="text"
-                              value={row.brand || ''}
-                              placeholder="Brand"
-                              onChange={e => handleUpdateRow(idx, 'brand', e.target.value)}
-                              className="bg-transparent border-b border-transparent focus:border-cyan-500 text-slate-300 outline-none w-20 truncate"
+                              type="number"
+                              step="any"
+                              value={row.denominationAmount ?? ''}
+                              placeholder="e.g. 5"
+                              onChange={e => handleUpdateRow(idx, 'denominationAmount', e.target.value ? parseFloat(e.target.value) : undefined)}
+                              className="bg-transparent border-b border-transparent focus:border-cyan-500 font-mono text-slate-300 outline-none w-14"
                             />
+                          </td>
+
+                          {/* Brand (with dropdown list & amber flag if new) */}
+                          <td className="p-2.5">
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                list="brands-list"
+                                value={row.brand || ''}
+                                placeholder="Brand"
+                                onChange={e => handleUpdateRow(idx, 'brand', e.target.value)}
+                                className="bg-transparent border-b border-transparent focus:border-cyan-500 text-slate-300 outline-none w-20 truncate"
+                              />
+                              {row.isNewBrand && (
+                                <span 
+                                  title="New brand not found in standard Lists" 
+                                  className="text-[9px] bg-amber-950 text-amber-300 border border-amber-800 px-1 py-0.2 rounded font-mono shrink-0"
+                                >
+                                  new — add to Lists
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* Stock Count */}
@@ -467,7 +529,7 @@ export const StockImportModal: React.FC<StockImportModalProps> = ({
                             />
                           </td>
 
-                          {/* Unit (with amber tag if new) */}
+                          {/* Base Unit (with amber tag if new) */}
                           <td className="p-2.5">
                             <div className="flex items-center gap-1">
                               <input
