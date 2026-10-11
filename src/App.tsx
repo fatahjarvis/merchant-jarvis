@@ -24,6 +24,8 @@ import { hasDevicePin } from './utils/security';
 import { TabKey, Order, LedgerCategory, StockItem } from './types';
 import { MJARVIS_FULL_BRAND_STAMP } from './utils/version';
 import { WifiOff, RefreshCw } from 'lucide-react';
+import { signInWithCustomToken } from 'firebase/auth';
+import { auth } from './utils/firebase';
 
 // Clause 6: Code-split screens via React.lazy + dynamic import
 const TodayScreen = lazy(() => import('./screens/TodayScreen').then(m => ({ default: m.TodayScreen })));
@@ -94,6 +96,25 @@ function MerchantJarvisMain() {
   const [stockImportInitialDoor, setStockImportInitialDoor] = useState<'door1' | 'door2'>('door1');
 
   const openOrdersCount = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Paid').length;
+
+  useEffect(() => {
+    const handleHandoff = async () => {
+      const hash = window.location.hash;
+      if (hash && hash.includes('handoff=')) {
+        const token = hash.split('handoff=')[1].split('&')[0];
+        try {
+          await signInWithCustomToken(auth, token);
+          console.info('[telemetry] portal-handoff success');
+          window.location.hash = '';
+        } catch (err: any) {
+          console.error('Portal handoff failed:', err);
+          alert('Ticket expired — sign in as usual.');
+          window.location.hash = '';
+        }
+      }
+    };
+    handleHandoff();
+  }, []);
 
   const handleOpenNewLedgerWithType = (type: LedgerCategory = 'Sale') => {
     setLedgerDefaultType(type);

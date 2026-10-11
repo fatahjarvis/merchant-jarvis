@@ -1422,6 +1422,9 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
           </a>{' '}
           showroom.
         </p>
+        <p className="text-[11px] text-slate-300 font-mono mt-2">
+          Portal sign-in: <a href="https://jarvismu.com/login" target="_blank" rel="noopener" className="text-cyan-400 underline">jarvismu.com/login</a>
+        </p>
 
         <p className="text-[11px] text-slate-500 border-t border-slate-900 pt-2 font-mono">
           Governed under feat(mjarvis) specifications · Mobile-first PWA for Mauritius SME retailers.
