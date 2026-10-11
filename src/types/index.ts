@@ -85,6 +85,10 @@ export interface StockItem {
   supplier?: string;
   supplierPhone?: string;
   updatedAt?: string;
+  // Backward compatibility aliases
+  unit?: string;
+  costPrice?: number;
+  sellingPrice?: number;
 }
 
 export type StockAdjustReason = 'Count' | 'Damage' | 'Return' | 'Sale' | 'Restock';
@@ -104,17 +108,29 @@ export interface StockMovement {
 
 export interface StockImportPreviewRow {
   name: string;
+  brand?: string;
   currentStock: number;
   minThreshold: number;
-  unit: string;
+  baseUnit: string;
+  sellingFormat: 'unit' | 'pack';
+  packContains?: number;
+  unitCost: number;
+  packCost?: number;
+  unitPrice: number;
+  packPrice?: number;
   category: string;
-  costPrice: number;
-  sellingPrice: number;
-  supplier: string;
-  supplierPhone: string;
+  supplier?: string;
+  supplierPhone?: string;
   isValid: boolean;
   validationError?: string;
   confidence?: number; // For Door 2 vision extraction (0.0 to 1.0)
+  isNewCategory?: boolean;
+  isNewBaseUnit?: boolean;
+  isNewSellingFormat?: boolean;
+  // Backward compatibility aliases
+  unit?: string;
+  costPrice?: number;
+  sellingPrice?: number;
 }
 
 export interface MerchantProfile {

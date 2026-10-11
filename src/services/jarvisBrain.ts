@@ -68,13 +68,15 @@ export function parseStockIntent(query: string, stockItems: StockItem[]): VoiceS
       const val = parseInt(numMatch[1], 10);
       const item = findBestMatchingStockItem(q, stockItems);
       if (item) {
+        const itemUnit = item.baseUnit || item.unit || 'units';
+        const brandStr = item.brand ? ` (${item.brand})` : '';
         return {
           type: 'stock-min',
           item,
           targetValue: val,
           originalValue: item.minThreshold,
-          unit: item.unit,
-          speechReadBack: `Confirm setting minimum safe stock threshold for ${item.name} from ${item.minThreshold} to ${val} ${item.unit}?`
+          unit: itemUnit,
+          speechReadBack: `Confirm setting minimum safe stock threshold for ${item.name}${brandStr} from ${item.minThreshold} to ${val} ${itemUnit}?`
         };
       }
     }
@@ -95,14 +97,16 @@ export function parseStockIntent(query: string, stockItems: StockItem[]): VoiceS
       const item = findBestMatchingStockItem(q, stockItems);
       if (item) {
         const nextVal = item.currentStock + delta;
+        const itemUnit = item.baseUnit || item.unit || 'units';
+        const brandStr = item.brand ? ` (${item.brand})` : '';
         return {
           type: 'stock-add',
           item,
           targetValue: nextVal,
           delta,
           originalValue: item.currentStock,
-          unit: item.unit,
-          speechReadBack: `Confirm adding ${delta} ${item.unit} to ${item.name}? Total will become ${nextVal} ${item.unit}.`
+          unit: itemUnit,
+          speechReadBack: `Confirm adding ${delta} ${itemUnit} to ${item.name}${brandStr}? Total will become ${nextVal} ${itemUnit}.`
         };
       }
     }
@@ -122,13 +126,15 @@ export function parseStockIntent(query: string, stockItems: StockItem[]): VoiceS
       const targetVal = parseInt(numMatch[1], 10);
       const item = findBestMatchingStockItem(q, stockItems);
       if (item) {
+        const itemUnit = item.baseUnit || item.unit || 'units';
+        const brandStr = item.brand ? ` (${item.brand})` : '';
         return {
           type: 'stock-set',
           item,
           targetValue: targetVal,
           originalValue: item.currentStock,
-          unit: item.unit,
-          speechReadBack: `Confirm updating stock count for ${item.name} from ${item.currentStock} to ${targetVal} ${item.unit}?`
+          unit: itemUnit,
+          speechReadBack: `Confirm updating stock count for ${item.name}${brandStr} from ${item.currentStock} to ${targetVal} ${itemUnit}?`
         };
       }
     }
@@ -186,10 +192,10 @@ export async function askJarvisEngine(
         displayText: "All inventory is healthy. No items below threshold."
       };
     }
-    const itemNames = lowStock.map(s => `${s.name} (${s.currentStock} ${s.unit} left)`).join(', ');
+    const itemNames = lowStock.map(s => `${s.name}${s.brand ? ` (${s.brand})` : ''} (${s.currentStock} ${s.baseUnit || s.unit || 'units'} left)`).join(', ');
     return {
       speechText: `You have ${lowStock.length} items low on stock. ${itemNames}. Consider reordering today.`,
-      displayText: `Low stock alert (${lowStock.length} items):\n• ${lowStock.map(s => `${s.name}: ${s.currentStock} ${s.unit} (Min: ${s.minThreshold})`).join('\n• ')}`
+      displayText: `Low stock alert (${lowStock.length} items):\n• ${lowStock.map(s => `${s.name}${s.brand ? ` (${s.brand})` : ''}: ${s.currentStock} ${s.baseUnit || s.unit || 'units'} (Min: ${s.minThreshold})`).join('\n• ')}`
     };
   }
 

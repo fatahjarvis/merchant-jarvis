@@ -41,9 +41,10 @@ export const NewLedgerModal: React.FC<NewLedgerModalProps> = ({
     if (type === 'Stock' && selectedStockSku) {
       finalCategory = `Restock ${selectedStockSku.name}`;
       const qtyNumber = parseInt(restockQty, 10) || 5;
+      const skuUnit = selectedStockSku.baseUnit || selectedStockSku.unit || 'units';
       finalNote = note 
-        ? `${note} (+${qtyNumber} ${selectedStockSku.unit})` 
-        : `Restocked ${qtyNumber} ${selectedStockSku.unit} from ${selectedStockSku.supplier || 'supplier'}`;
+        ? `${note} (+${qtyNumber} ${skuUnit})` 
+        : `Restocked ${qtyNumber} ${skuUnit} from ${selectedStockSku.supplier || 'supplier'}`;
     }
 
     await addLedgerEntry(
@@ -192,7 +193,7 @@ export const NewLedgerModal: React.FC<NewLedgerModalProps> = ({
                     onChange={e => setRestockQty(e.target.value)}
                     className="w-16 bg-slate-900 border border-slate-800 rounded px-2 py-1 font-mono text-cyan-300 outline-none"
                   />
-                  <span className="text-slate-400 font-mono">{selectedStockSku.unit}</span>
+                  <span className="text-slate-400 font-mono">{selectedStockSku.baseUnit || selectedStockSku.unit}</span>
                 </div>
               )}
             </div>

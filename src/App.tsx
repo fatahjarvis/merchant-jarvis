@@ -3,39 +3,82 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { StoreProvider, useStore } from './context/StoreContext';
 import { Header } from './components/Header';
 import { BottomTabBar } from './components/BottomTabBar';
-import { TodayScreen } from './screens/TodayScreen';
-import { OrdersScreen } from './screens/OrdersScreen';
-import { JarvisVoiceScreen } from './screens/JarvisVoiceScreen';
-import { LedgerScreen } from './screens/LedgerScreen';
-import { MenuScreen } from './screens/MenuScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { AdvanceOrderSheet } from './components/AdvanceOrderSheet';
 import { NewOrderModal } from './components/NewOrderModal';
 import { NewLedgerModal } from './components/NewLedgerModal';
 import { AuthModal } from './components/AuthModal';
-import { PWAInstallModal } from './components/PWAInstallModal';
+import { InstallKindnessModal } from './components/InstallKindnessModal';
 import { StockRoomModal } from './components/StockRoomModal';
 import { StockItemSheet } from './components/StockItemSheet';
 import { StockImportModal } from './components/StockImportModal';
+import { CloudMergeModal } from './components/CloudMergeModal';
+import { DeviceLockScreen } from './components/DeviceLockScreen';
+import { hasDevicePin } from './utils/security';
 import { TabKey, Order, LedgerCategory, StockItem } from './types';
 import { MJARVIS_FULL_BRAND_STAMP } from './utils/version';
-import { WifiOff } from 'lucide-react';
+import { WifiOff, RefreshCw } from 'lucide-react';
+
+// Clause 6: Code-split screens via React.lazy + dynamic import
+const TodayScreen = lazy(() => import('./screens/TodayScreen').then(m => ({ default: m.TodayScreen })));
+const OrdersScreen = lazy(() => import('./screens/OrdersScreen').then(m => ({ default: m.OrdersScreen })));
+const JarvisVoiceScreen = lazy(() => import('./screens/JarvisVoiceScreen').then(m => ({ default: m.JarvisVoiceScreen })));
+const LedgerScreen = lazy(() => import('./screens/LedgerScreen').then(m => ({ default: m.LedgerScreen })));
+const MenuScreen = lazy(() => import('./screens/MenuScreen').then(m => ({ default: m.MenuScreen })));
+
+function ScreenSkeleton() {
+  return (
+    <div className="flex flex-col items-center justify-center p-12 space-y-3">
+      <RefreshCw className="w-7 h-7 text-cyan-400 animate-spin" />
+      <span className="text-xs font-mono text-slate-400">Loading screen...</span>
+    </div>
+  );
+}
 
 function MerchantJarvisMain() {
-  const { orders, advanceOrderStatus, setOrderStatus, isOnline, budgetNotice, addNewStockItem } = useStore();
+  const { 
+    orders, 
+    advanceOrderStatus, 
+    setOrderStatus, 
+    isOnline, 
+    budgetNotice, 
+    addNewStockItem,
+    pendingCloudMerge,
+    confirmCloudMerge,
+    cancelCloudMerge
+  } = useStore();
   
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
   const [isNewLedgerOpen, setIsNewLedgerOpen] = useState(false);
   const [ledgerDefaultType, setLedgerDefaultType] = useState<LedgerCategory>('Sale');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isPWAInstallOpen, setIsPWAInstallOpen] = useState(false);
 
-  // Stock modals state (Work Order v45)
+  // Clause 1: Device Lock (app opens to lock screen, never straight to Today)
+  const [isDeviceLocked, setIsDeviceLocked] = useState<boolean>(() => hasDevicePin());
+
+  // Clause 4: INSTALL KINDNESS - capture beforeinstallprompt at boot
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+      console.info('[telemetry] pwa-install beforeinstallprompt-captured');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  // Stock modals state (Work Order v45 & v46)
   const [isStockRoomOpen, setIsStockRoomOpen] = useState(false);
   const [selectedStockItem, setSelectedStockItem] = useState<StockItem | null>(null);
   const [isStockItemSheetOpen, setIsStockItemSheetOpen] = useState(false);
@@ -64,15 +107,29 @@ function MerchantJarvisMain() {
       name: `New Product #${Math.floor(Math.random() * 900 + 100)}`,
       currentStock: 10,
       minThreshold: 5,
-      unit: 'units',
+      baseUnit: 'units',
+      sellingFormat: 'unit',
+      packContains: 1,
+      unitCost: 50,
+      packCost: 50,
+      unitPrice: 75,
+      packPrice: 75,
       category: 'General',
-      costPrice: 50,
-      sellingPrice: 75,
       supplier: 'Local Supplier',
       supplierPhone: '+230 5...'
     });
     setSelectedStockItem(newItem);
     setIsStockItemSheetOpen(true);
+  };
+
+  const handleStartEditOrder = (order: Order) => {
+    setOrderToEdit(order);
+    setIsNewOrderOpen(true);
+  };
+
+  const handleCloseNewOrder = () => {
+    setIsNewOrderOpen(false);
+    setOrderToEdit(null);
   };
 
   return (
@@ -101,44 +158,63 @@ function MerchantJarvisMain() {
       {/* Main App Header */}
       <Header onOpenAuth={() => setIsAuthOpen(true)} />
 
-      {/* Content View Container: Mobile single-column flow */}
+      {/* Content View Container with Error Boundary & Lazy Suspense */}
       <main className="flex-1 max-w-md w-full mx-auto px-3.5 pt-3">
-        {activeTab === 'today' && (
-          <TodayScreen
-            onOpenNewOrder={() => setIsNewOrderOpen(true)}
-            onOpenNewLedger={() => handleOpenNewLedgerWithType('Sale')}
-            onSelectTab={setActiveTab}
-            onSelectOrder={setSelectedOrder}
-            onOpenStockRoom={() => setIsStockRoomOpen(true)}
-            onOpenStockItem={handleSelectStockItem}
-            onOpenStockImport={handleOpenStockImport}
-          />
-        )}
+        <Suspense fallback={<ScreenSkeleton />}>
+          {activeTab === 'today' && (
+            <ErrorBoundary name="today-screen">
+              <TodayScreen
+                onOpenNewOrder={() => {
+                  setOrderToEdit(null);
+                  setIsNewOrderOpen(true);
+                }}
+                onOpenNewLedger={() => handleOpenNewLedgerWithType('Sale')}
+                onSelectTab={setActiveTab}
+                onSelectOrder={setSelectedOrder}
+                onOpenStockRoom={() => setIsStockRoomOpen(true)}
+                onOpenStockItem={handleSelectStockItem}
+                onOpenStockImport={handleOpenStockImport}
+              />
+            </ErrorBoundary>
+          )}
 
-        {activeTab === 'orders' && (
-          <OrdersScreen
-            onOpenNewOrder={() => setIsNewOrderOpen(true)}
-            onSelectOrder={setSelectedOrder}
-          />
-        )}
+          {activeTab === 'orders' && (
+            <ErrorBoundary name="orders-screen">
+              <OrdersScreen
+                onOpenNewOrder={() => {
+                  setOrderToEdit(null);
+                  setIsNewOrderOpen(true);
+                }}
+                onSelectOrder={setSelectedOrder}
+                onEditOrder={handleStartEditOrder}
+              />
+            </ErrorBoundary>
+          )}
 
-        {activeTab === 'jarvis' && (
-          <JarvisVoiceScreen />
-        )}
+          {activeTab === 'jarvis' && (
+            <ErrorBoundary name="jarvis-screen">
+              <JarvisVoiceScreen />
+            </ErrorBoundary>
+          )}
 
-        {activeTab === 'ledger' && (
-          <LedgerScreen
-            onOpenNewLedger={handleOpenNewLedgerWithType}
-          />
-        )}
+          {activeTab === 'ledger' && (
+            <ErrorBoundary name="ledger-screen">
+              <LedgerScreen
+                onOpenNewLedger={handleOpenNewLedgerWithType}
+              />
+            </ErrorBoundary>
+          )}
 
-        {activeTab === 'menu' && (
-          <MenuScreen
-            onOpenAuth={() => setIsAuthOpen(true)}
-            onOpenPWAInstall={() => setIsPWAInstallOpen(true)}
-            onOpenStockRoom={() => setIsStockRoomOpen(true)}
-          />
-        )}
+          {activeTab === 'menu' && (
+            <ErrorBoundary name="menu-screen">
+              <MenuScreen
+                onOpenAuth={() => setIsAuthOpen(true)}
+                onOpenPWAInstall={() => setIsPWAInstallOpen(true)}
+                onOpenStockRoom={() => setIsStockRoomOpen(true)}
+              />
+            </ErrorBoundary>
+          )}
+        </Suspense>
 
         {/* Global Footer */}
         <footer className="w-full text-center py-3 pb-8 text-[11px] font-mono text-slate-500/80 tracking-tight select-none">
@@ -154,69 +230,109 @@ function MerchantJarvisMain() {
       />
 
       {/* Order Advance Status Bottom Sheet */}
-      <AdvanceOrderSheet
-        order={selectedOrder}
-        onClose={() => setSelectedOrder(null)}
-        onAdvance={advanceOrderStatus}
-        onSetStatus={setOrderStatus}
-      />
+      <ErrorBoundary name="advance-order-sheet">
+        <AdvanceOrderSheet
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          onAdvance={advanceOrderStatus}
+          onSetStatus={setOrderStatus}
+          onEditOrder={handleStartEditOrder}
+        />
+      </ErrorBoundary>
 
-      {/* New Order Modal Sheet */}
-      <NewOrderModal
-        isOpen={isNewOrderOpen}
-        onClose={() => setIsNewOrderOpen(false)}
-      />
+      {/* New / Edit Order Modal Sheet */}
+      <ErrorBoundary name="new-order-modal">
+        <NewOrderModal
+          isOpen={isNewOrderOpen}
+          orderToEdit={orderToEdit}
+          onClose={handleCloseNewOrder}
+        />
+      </ErrorBoundary>
 
       {/* New Ledger Entry Modal */}
-      <NewLedgerModal
-        isOpen={isNewLedgerOpen}
-        onClose={() => setIsNewLedgerOpen(false)}
-        defaultType={ledgerDefaultType}
-      />
+      <ErrorBoundary name="new-ledger-modal">
+        <NewLedgerModal
+          isOpen={isNewLedgerOpen}
+          onClose={() => setIsNewLedgerOpen(false)}
+          defaultType={ledgerDefaultType}
+        />
+      </ErrorBoundary>
 
       {/* Estate Auth Modal */}
-      <AuthModal
-        isOpen={isAuthOpen}
-        onClose={() => setIsAuthOpen(false)}
-      />
+      <ErrorBoundary name="auth-modal">
+        <AuthModal
+          isOpen={isAuthOpen}
+          onClose={() => setIsAuthOpen(false)}
+        />
+      </ErrorBoundary>
 
-      {/* PWA Install Modal */}
-      <PWAInstallModal
-        isOpen={isPWAInstallOpen}
-        onClose={() => setIsPWAInstallOpen(false)}
-      />
+      {/* Install Kindness Modal (Clause 4) */}
+      <ErrorBoundary name="install-kindness-modal">
+        <InstallKindnessModal
+          isOpen={isPWAInstallOpen}
+          onClose={() => setIsPWAInstallOpen(false)}
+          deferredPrompt={deferredInstallPrompt}
+          onClearPrompt={() => setDeferredInstallPrompt(null)}
+        />
+      </ErrorBoundary>
 
-      {/* Stock Room Manager Modal (Item 1) */}
+      {/* Stock Room Manager Modal */}
       {isStockRoomOpen && (
-        <StockRoomModal
-          isOpen={isStockRoomOpen}
-          onClose={() => setIsStockRoomOpen(false)}
-          onSelectItem={handleSelectStockItem}
-          onOpenImport={handleOpenStockImport}
-          onAddNewItem={handleAddNewStockItem}
-        />
+        <ErrorBoundary name="stock-room-modal">
+          <StockRoomModal
+            isOpen={isStockRoomOpen}
+            onClose={() => setIsStockRoomOpen(false)}
+            onSelectItem={handleSelectStockItem}
+            onOpenImport={handleOpenStockImport}
+            onAddNewItem={handleAddNewStockItem}
+          />
+        </ErrorBoundary>
       )}
 
-      {/* Stock Item Sheet (Item 1 & Item 6) */}
+      {/* Stock Item Sheet */}
       {isStockItemSheetOpen && selectedStockItem && (
-        <StockItemSheet
-          item={selectedStockItem}
-          isOpen={isStockItemSheetOpen}
-          onClose={() => {
-            setIsStockItemSheetOpen(false);
-            setSelectedStockItem(null);
-          }}
-        />
+        <ErrorBoundary name="stock-item-sheet">
+          <StockItemSheet
+            item={selectedStockItem}
+            isOpen={isStockItemSheetOpen}
+            onClose={() => {
+              setIsStockItemSheetOpen(false);
+              setSelectedStockItem(null);
+            }}
+          />
+        </ErrorBoundary>
       )}
 
-      {/* Stock Import Modal (Doors 1 & 2) */}
+      {/* Stock Import Modal */}
       {isStockImportOpen && (
-        <StockImportModal
-          isOpen={isStockImportOpen}
-          initialDoor={stockImportInitialDoor}
-          onClose={() => setIsStockImportOpen(false)}
-        />
+        <ErrorBoundary name="stock-import-modal">
+          <StockImportModal
+            isOpen={isStockImportOpen}
+            initialDoor={stockImportInitialDoor}
+            onClose={() => setIsStockImportOpen(false)}
+          />
+        </ErrorBoundary>
       )}
+
+      {/* Clause 5: Cloud Merge Read-Back Modal */}
+      {pendingCloudMerge && (
+        <ErrorBoundary name="cloud-merge-modal">
+          <CloudMergeModal
+            pendingMerge={pendingCloudMerge}
+            onConfirm={confirmCloudMerge}
+            onCancel={cancelCloudMerge}
+          />
+        </ErrorBoundary>
+      )}
+
+      {/* Clause 1: Device Lock Screen */}
+      <ErrorBoundary name="device-lock-screen">
+        <DeviceLockScreen
+          isLocked={isDeviceLocked}
+          onUnlock={() => setIsDeviceLocked(false)}
+          onLock={() => setIsDeviceLocked(true)}
+        />
+      </ErrorBoundary>
     </div>
   );
 }

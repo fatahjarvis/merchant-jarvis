@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { StockItem, StockStatusChip } from '../types';
 import { useStore } from '../context/StoreContext';
 import { formatRs } from '../utils/mauritiusTime';
+import { getStockStatusChip, getSellingFormatQty } from '../utils/stockUtils';
 import { 
   X, 
   Search, 
@@ -38,11 +39,9 @@ export const StockRoomModal: React.FC<StockRoomModalProps> = ({
   const [activeFilter, setActiveFilter] = useState<'ALL' | StockStatusChip>('ALL');
   const [activeTab, setActiveTab] = useState<'inventory' | 'movements'>('inventory');
 
-  // Status helper
+  // Status helper (Stock Model v2 computed on selling-format qty)
   const getItemStatus = (item: StockItem): StockStatusChip => {
-    if (item.currentStock === 0) return 'OUT';
-    if (item.currentStock <= item.minThreshold) return 'LOW';
-    return 'OK';
+    return getStockStatusChip(item);
   };
 
   const okCount = stockItems.filter(i => getItemStatus(i) === 'OK').length;
@@ -239,20 +238,26 @@ export const StockRoomModal: React.FC<StockRoomModalProps> = ({
                             {status}
                           </span>
                           <span className="text-xs font-bold text-slate-100 truncate max-w-[170px]">
-                            {item.name}
+                            {item.name}{item.brand ? ` (${item.brand})` : ''}
                           </span>
                         </div>
 
                         <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
                           <span className="font-mono text-cyan-300 font-semibold">
-                            {item.currentStock} {item.unit}
+                            {item.currentStock} {item.baseUnit || item.unit || 'units'}
+                            {item.sellingFormat === 'pack' && item.packContains && item.packContains > 1 && (
+                              <span className="text-slate-400 font-normal"> ({getSellingFormatQty(item)} pk)</span>
+                            )}
                           </span>
                           <span>·</span>
                           <span className="text-slate-500">Min: {item.minThreshold}</span>
-                          {item.sellingPrice > 0 && (
+                          {(item.unitPrice > 0 || (item.sellingPrice || 0) > 0) && (
                             <>
                               <span>·</span>
-                              <span className="font-mono text-teal-400">{formatRs(item.sellingPrice)}</span>
+                              <span className="font-mono text-teal-400">
+                                {formatRs(item.unitPrice || item.sellingPrice || 0)}
+                                {item.sellingFormat === 'pack' && item.packPrice ? ` (${formatRs(item.packPrice)}/pk)` : ''}
+                              </span>
                             </>
                           )}
                         </div>

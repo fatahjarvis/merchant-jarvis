@@ -2,13 +2,14 @@ import React from 'react';
 import { Order, OrderStatus } from '../types';
 import { useStore } from '../context/StoreContext';
 import { formatRs } from '../utils/mauritiusTime';
-import { CheckCircle2, ArrowRight, X, Phone, Clock, MessageSquare } from 'lucide-react';
+import { CheckCircle2, ArrowRight, X, Phone, Clock, MessageSquare, Edit2, Lock } from 'lucide-react';
 
 interface AdvanceOrderSheetProps {
   order: Order | null;
   onClose: () => void;
   onAdvance: (orderId: string) => Promise<OrderStatus | null>;
   onSetStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  onEditOrder?: (order: Order) => void;
 }
 
 const STATUS_PIPELINE: OrderStatus[] = ['New', 'Preparing', 'Out', 'Delivered', 'Paid'];
@@ -33,7 +34,8 @@ export const AdvanceOrderSheet: React.FC<AdvanceOrderSheetProps> = ({
   order,
   onClose,
   onAdvance,
-  onSetStatus
+  onSetStatus,
+  onEditOrder
 }) => {
   const { generateWhatsAppUrl } = useStore();
   if (!order) return null;
@@ -153,6 +155,27 @@ export const AdvanceOrderSheet: React.FC<AdvanceOrderSheetProps> = ({
             </p>
           )}
         </div>
+
+        {/* Clause 3 (v46) / WORK-ORDER: Order Edit below Paid */}
+        {order.status !== 'Paid' ? (
+          <button
+            type="button"
+            onClick={() => {
+              onEditOrder?.(order);
+              onClose();
+            }}
+            className="w-full py-2.5 px-3 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-98"
+            style={{ minHeight: '44px' }}
+          >
+            <Edit2 className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Edit Order Details</span>
+          </button>
+        ) : (
+          <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-800/60 text-amber-300 text-xs flex items-center gap-2">
+            <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>correct via Ledger — paid deeds are history</span>
+          </div>
+        )}
 
         {/* Big Action Button */}
         {nextStatus ? (

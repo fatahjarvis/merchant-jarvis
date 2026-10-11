@@ -40,6 +40,7 @@ import {
 import { User } from 'firebase/auth';
 import { getMauritiusDateKey, getMauritiusNow, formatMauritiusShortTime, formatRs } from '../utils/mauritiusTime';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { generateSupplierWhatsAppUrl as buildSupplierWhatsAppUrl } from '../utils/stockUtils';
 
 const STORAGE_KEYS = {
   ORDERS: 'mjarvis_orders_v1',
@@ -111,6 +112,7 @@ interface StoreContextType {
   advanceOrderStatus: (orderId: string) => Promise<OrderStatus | null>;
   setOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   addOrder: (order: Omit<Order, 'id' | 'orderNumber' | 'createdAt' | 'updatedAt'>) => Promise<Order>;
+  updateOrder: (orderId: string, updates: Partial<Order>) => { success: boolean; error?: string };
   deleteOrder: (orderId: string) => Promise<void>;
   // Ledger actions
   addLedgerEntry: (amount: number, type: LedgerCategory, categoryName: string, note?: string) => Promise<LedgerEntry>;
@@ -132,11 +134,14 @@ interface StoreContextType {
   // Estate Cloud config actions
   saveCustomCloudConfig: (jsonString: string) => void;
   resetToEstateCloudDefault: () => void;
-  // Auth actions
+  // Auth & Cloud Merge actions
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   registerWithEmail: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
+  pendingCloudMerge: { ordersCount: number; ledgerCount: number; stockCount: number; user: User } | null;
+  confirmCloudMerge: () => Promise<void>;
+  cancelCloudMerge: () => void;
   // Sync
   triggerSync: () => Promise<void>;
 }
@@ -237,6 +242,12 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [user, setUser] = useState<User | null>(null);
   const [isAuthorizedOperator, setIsAuthorizedOperator] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [pendingCloudMerge, setPendingCloudMerge] = useState<{
+    ordersCount: number;
+    ledgerCount: number;
+    stockCount: number;
+    user: User;
+  } | null>(null);
 
   // Sync state to local storage on change
   useEffect(() => {
@@ -313,7 +324,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSyncQueue(prev => [...prev, action]);
   }, []);
 
-  // Merge demo data on first sign-in
+  // Merge demo data on first sign-in (Clause 5: requires user confirm before cloud write)
   const handleFirstSignInMerge = useCallback(async (signedInUser: User) => {
     const uid = signedInUser.uid;
     const hasMerged = localStorage.getItem(`${STORAGE_KEYS.HAS_MERGED_DEMO}_${uid}`) === 'true';
@@ -327,26 +338,56 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     setProfile(updatedProfile);
-
     setOrders(prev => prev.map(o => ({ ...o, merchantId: uid })));
     setLedgerEntries(prev => prev.map(l => ({ ...l, merchantId: uid })));
 
-    if (!hasMerged && db) {
-      try {
-        const profileRef = doc(db, 'merchant_profile', uid);
-        await setDoc(profileRef, {
-          ...updatedProfile,
-          auditLine: `Claimed by ${signedInUser.email || uid} at ${new Date().toISOString()}`
-        }, { merge: true });
-
-        setDailyWrites(w => w + 1);
-
-        localStorage.setItem(`${STORAGE_KEYS.HAS_MERGED_DEMO}_${uid}`, 'true');
-      } catch (err) {
-        console.warn("Cloud tenancy auto-merge queued:", err);
-      }
+    if (!hasMerged) {
+      // First sign-in shows merge read-back requiring confirm before any cloud write
+      setPendingCloudMerge({
+        ordersCount: orders.length,
+        ledgerCount: ledgerEntries.length,
+        stockCount: stockItems.length,
+        user: signedInUser
+      });
     }
-  }, [profile]);
+  }, [profile, orders.length, ledgerEntries.length, stockItems.length]);
+
+  const confirmCloudMerge = useCallback(async () => {
+    if (!pendingCloudMerge || !db) {
+      setPendingCloudMerge(null);
+      return;
+    }
+    const uid = pendingCloudMerge.user.uid;
+    const signedInEmail = pendingCloudMerge.user.email || profile.email;
+    const updatedProfile: MerchantProfile = {
+      ...profile,
+      merchantId: uid,
+      ownerUid: uid,
+      email: signedInEmail,
+      members: Array.from(new Set([...(profile.members || []), uid]))
+    };
+    setProfile(updatedProfile);
+
+    try {
+      const profileRef = doc(db, 'merchant_profile', uid);
+      await setDoc(profileRef, {
+        ...updatedProfile,
+        auditLine: `Claimed by ${signedInEmail} at ${new Date().toISOString()}`
+      }, { merge: true });
+
+      setDailyWrites(w => w + 1);
+      localStorage.setItem(`${STORAGE_KEYS.HAS_MERGED_DEMO}_${uid}`, 'true');
+      console.info(`[telemetry] cloud-merge confirmed (${pendingCloudMerge.ordersCount} orders, ${pendingCloudMerge.ledgerCount} ledger lines, ${pendingCloudMerge.stockCount} stock items)`);
+    } catch (err) {
+      console.warn("Cloud tenancy auto-merge write error:", err);
+    } finally {
+      setPendingCloudMerge(null);
+    }
+  }, [pendingCloudMerge, profile]);
+
+  const cancelCloudMerge = useCallback(() => {
+    setPendingCloudMerge(null);
+  }, []);
 
   // Auth subscription (no polling)
   useEffect(() => {
@@ -376,12 +417,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   /**
    * Sync background runner:
+   * Clause 5: queue drain disabled while guest
    * (1) Ledger day-book stored as ONE doc per merchant per day with entries[]
    * (2) Per-device daily write budget 300
    * (3) Telemetry leg 'cloud-budget r/w' emitted at each sync drain
    */
   const triggerSync = useCallback(async () => {
     if (!isOnline || !db || syncQueue.length === 0) return;
+    if (!user) return; // Clause 5: queue drain disabled while guest
+    const hasMerged = localStorage.getItem(`${STORAGE_KEYS.HAS_MERGED_DEMO}_${user.uid}`) === 'true';
+    if (!hasMerged) return; // Clause 5: requiring confirm before any cloud write
 
     if (dailyWrites >= MAX_DAILY_WRITES) {
       const leg = `cloud-budget r/w: ${dailyReads}/${dailyWrites} (budget resting tonight)`;
@@ -645,6 +690,69 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return newOrder;
   }, [orders.length, enqueueSyncAction, profile.merchantId]);
 
+  const updateOrder = useCallback((orderId: string, updates: Partial<Order>): { success: boolean; error?: string } => {
+    let errorMsg: string | undefined;
+    let success = false;
+
+    setOrders(prev => {
+      const target = prev.find(o => o.id === orderId);
+      if (!target) {
+        errorMsg = 'Order not found';
+        return prev;
+      }
+      if (target.status === 'Paid') {
+        errorMsg = 'correct via Ledger — paid deeds are history';
+        return prev;
+      }
+
+      const newItems = updates.items || target.items;
+      const recomputedTotal = newItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+      const changedKeys = Object.keys(updates).filter(k => (target as any)[k] !== (updates as any)[k]);
+      const nowIso = new Date().toISOString();
+
+      const updated: Order = {
+        ...target,
+        ...updates,
+        items: newItems,
+        totalAmount: updates.totalAmount ?? recomputedTotal,
+        updatedAt: nowIso
+      };
+
+      const logLine = `order-edited (${changedKeys.join(', ') || 'fields'})`;
+      console.info(`[telemetry] ${logLine}`);
+
+      // Record audit stock movement line
+      const auditMovement: StockMovement = {
+        id: `mov_${Date.now()}_${Math.random()}`,
+        itemId: target.id,
+        itemName: `Order ${target.orderNumber}`,
+        delta: 0,
+        previousStock: 0,
+        newStock: 0,
+        reason: 'Count',
+        source: 'manual',
+        note: logLine,
+        timestamp: nowIso
+      };
+      setStockMovements(mPrev => [auditMovement, ...mPrev]);
+
+      enqueueSyncAction({
+        id: `sync_${Date.now()}`,
+        type: 'ORDER_UPDATE',
+        collection: 'orders',
+        path: `orders/${profile.merchantId}/order_items/${orderId}`,
+        docId: orderId,
+        payload: { ...updated } as unknown as Record<string, unknown>,
+        queuedAt: nowIso
+      });
+
+      success = true;
+      return prev.map(o => o.id === orderId ? updated : o);
+    });
+
+    return { success, error: errorMsg };
+  }, [enqueueSyncAction, profile.merchantId]);
+
   const deleteOrder = useCallback(async (orderId: string): Promise<void> => {
     setOrders(prev => prev.filter(o => o.id !== orderId));
     enqueueSyncAction({
@@ -824,23 +932,9 @@ Logixtix Marketing Ltd · Mauritius
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   }, [profile]);
 
-  // Reorder loop: Supplier WhatsApp template helper
-  const generateSupplierWhatsAppUrl = useCallback((item: StockItem, qtyNeeded: number = 10) => {
-    let phone = (item.supplierPhone || profile.phone || '').replace(/\D/g, '');
-    if (phone.length === 8 && (phone.startsWith('5') || phone.startsWith('6'))) {
-      phone = `230${phone}`;
-    }
-
-    const template = profile.whatsappTemplateSupplier || 
-      'Bonzour {supplier}, this is {shopName}. Please supply {qty} units of {item}. Mersi!';
-
-    const message = template
-      .replace('{supplier}', item.supplier || 'Supplier')
-      .replace('{item}', item.name)
-      .replace('{qty}', `${qtyNeeded} ${item.unit || 'units'}`)
-      .replace('{shopName}', profile.shopName);
-
-    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+  // Reorder loop: Supplier WhatsApp template helper (Stock Model v2)
+  const generateSupplierWhatsAppUrl = useCallback((item: StockItem) => {
+    return buildSupplierWhatsAppUrl(item, profile);
   }, [profile]);
 
   // Stock actions
@@ -939,12 +1033,17 @@ Logixtix Marketing Ltd · Mauritius
           const delta = item.currentStock - existing.currentStock;
           const updated: StockItem = {
             ...existing,
+            brand: item.brand || existing.brand,
             currentStock: item.currentStock,
             minThreshold: item.minThreshold || existing.minThreshold,
             baseUnit: item.baseUnit || existing.baseUnit,
-            category: item.category || existing.category,
+            sellingFormat: item.sellingFormat || existing.sellingFormat,
+            packContains: item.packContains || existing.packContains || 1,
             unitCost: item.unitCost ?? existing.unitCost,
+            packCost: item.packCost ?? existing.packCost,
             unitPrice: item.unitPrice ?? existing.unitPrice,
+            packPrice: item.packPrice ?? existing.packPrice,
+            category: item.category || existing.category,
             supplier: item.supplier || existing.supplier,
             supplierPhone: item.supplierPhone || existing.supplierPhone,
             updatedAt: nowIso
@@ -1096,6 +1195,7 @@ Logixtix Marketing Ltd · Mauritius
     advanceOrderStatus,
     setOrderStatus,
     addOrder,
+    updateOrder,
     deleteOrder,
     addLedgerEntry,
     deleteLedgerEntry,
@@ -1116,6 +1216,9 @@ Logixtix Marketing Ltd · Mauritius
     loginWithEmail,
     registerWithEmail,
     logout,
+    pendingCloudMerge,
+    confirmCloudMerge,
+    cancelCloudMerge,
     triggerSync
   }), [
     orders,
@@ -1135,6 +1238,7 @@ Logixtix Marketing Ltd · Mauritius
     advanceOrderStatus,
     setOrderStatus,
     addOrder,
+    updateOrder,
     deleteOrder,
     addLedgerEntry,
     deleteLedgerEntry,
@@ -1155,6 +1259,9 @@ Logixtix Marketing Ltd · Mauritius
     loginWithEmail,
     registerWithEmail,
     logout,
+    pendingCloudMerge,
+    confirmCloudMerge,
+    cancelCloudMerge,
     triggerSync
   ]);
 

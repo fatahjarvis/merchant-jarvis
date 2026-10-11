@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../context/StoreContext';
-import { MJARVIS_FULL_BRAND_STAMP } from '../utils/version';
+import { MJARVIS_FULL_BRAND_STAMP, MJARVIS_SHOWROOM } from '../utils/version';
 import { 
   Store, 
   Download, 

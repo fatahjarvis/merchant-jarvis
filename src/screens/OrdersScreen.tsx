@@ -13,12 +13,15 @@ import {
   Package, 
   ArrowRight,
   Filter,
-  MessageSquare
+  MessageSquare,
+  Edit2,
+  Lock
 } from 'lucide-react';
 
 interface OrdersScreenProps {
   onOpenNewOrder: () => void;
   onSelectOrder: (order: Order) => void;
+  onEditOrder?: (order: Order) => void;
 }
 
 const STATUS_FILTERS: Array<'All' | OrderStatus> = ['All', 'New', 'Preparing', 'Out', 'Delivered', 'Paid'];
@@ -33,7 +36,8 @@ const STATUS_CHIP_COLORS: Record<OrderStatus, { bg: string; text: string; border
 
 export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   onOpenNewOrder,
-  onSelectOrder
+  onSelectOrder,
+  onEditOrder
 }) => {
   const { orders, generateWhatsAppUrl } = useStore();
   const [activeFilter, setActiveFilter] = useState<'All' | OrderStatus>('All');
@@ -155,14 +159,38 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
                   </div>
                 </div>
 
-                {/* Items preview */}
+                {/* Items preview and Actions */}
                 <div className="text-xs text-slate-400 bg-slate-950/60 rounded-xl px-3 py-2 border border-slate-900 flex items-center justify-between">
                   <span className="truncate pr-2">
                     {order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}
                   </span>
-                  <span className="shrink-0 text-cyan-400 flex items-center gap-1 font-semibold text-[11px]">
-                    Advance <ChevronRight className="w-3.5 h-3.5" />
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {order.status !== 'Paid' ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditOrder?.(order);
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 border border-slate-750 text-cyan-300 text-[11px] font-semibold flex items-center gap-1 transition"
+                        title="Edit order"
+                      >
+                        <Edit2 className="w-3 h-3 text-cyan-400" />
+                        <span>Edit</span>
+                      </button>
+                    ) : (
+                      <span 
+                        title="correct via Ledger — paid deeds are history"
+                        className="text-[10px] font-mono text-amber-400/90 flex items-center gap-1"
+                      >
+                        <Lock className="w-3 h-3 text-amber-400" />
+                        <span className="hidden sm:inline">paid locked</span>
+                      </span>
+                    )}
+                    <span className="text-cyan-400 flex items-center gap-0.5 font-semibold text-[11px]">
+                      Advance <ChevronRight className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
                 </div>
               </div>
             );

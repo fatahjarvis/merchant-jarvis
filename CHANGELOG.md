@@ -5,3 +5,4 @@ DECREE 10 Oct — core frozen at v1.0.1; stamps advance by MUT digits only.
 v1.0.1-2610101325 — hook-order heal + version sync.
 v1.0.1-2610101401 — v46 partial: wording polish, Stock v2 half-migration.
 v1.0.1-2610101437 — v46 completion: Stock v2 whole, Template V2 with LISTS dropdowns, order edit, build clean.
+v1.0.1-2610111331 — v47: completion audit (Stock v2 whole, Template V2 lazy exceljs + LISTS dropdowns, Order edit below Paid); device lock (salted hash PIN, WebAuthn biometrics, auto-lock 5m, forgot PIN estate verify); error boundaries (screen-stumble telemetry); MJARVIS_SHOWROOM constant home; install kindness (beforeinstallprompt, Opera UA card, guidance sheet); guest honesty (signed-out banner, queue drain disabled, cloud drawer merge read-back); performance code-splitting (React.lazy + import.meta.dirname).

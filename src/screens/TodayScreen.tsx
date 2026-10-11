@@ -29,6 +29,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Order, StockItem, StockStatusChip } from '../types';
+import { getStockStatusChip, getSellingFormatQty } from '../utils/stockUtils';
 
 interface TodayScreenProps {
   onOpenNewOrder: () => void;
@@ -54,6 +55,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     ledgerEntries, 
     stockItems, 
     profile, 
+    user,
     generateWhatsAppUrl,
     generateSupplierWhatsAppUrl 
   } = useStore();
@@ -70,11 +72,9 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   const openOrders = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Paid');
   const deliveriesDueToday = orders.filter(o => (o.deliveryDueDate === todayKey || o.isDueToday) && (o.status === 'New' || o.status === 'Preparing' || o.status === 'Out'));
   
-  // Stock status helper
+  // Stock status helper (Stock Model v2 computed on selling-format qty)
   const getItemStatus = (item: StockItem): StockStatusChip => {
-    if (item.currentStock === 0) return 'OUT';
-    if (item.currentStock <= item.minThreshold) return 'LOW';
-    return 'OK';
+    return getStockStatusChip(item);
   };
 
   const lowStock = stockItems.filter(s => getItemStatus(s) === 'LOW');
@@ -115,6 +115,23 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           {profile.shopName} · {profile.district}, Mauritius
         </p>
       </div>
+
+      {/* Clause 5: GUEST HONESTY banner on signed-out Today */}
+      {!user && (
+        <div className="bg-gradient-to-r from-[#061e38] via-slate-900 to-[#07243b] border border-cyan-800/80 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-lg animate-in fade-in">
+          <div className="text-xs text-slate-200">
+            <span className="font-bold text-cyan-300 block mb-0.5">Guest mode</span>
+            <span>Your data lives on this device only. Sign in to sync with the estate cloud.</span>
+          </div>
+          <button
+            onClick={() => onSelectTab('menu')}
+            className="px-3.5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold shrink-0 shadow-[0_0_12px_rgba(6,182,212,0.4)] transition active:scale-95"
+            style={{ minHeight: '38px' }}
+          >
+            Sign in
+          </button>
+        </div>
+      )}
 
       {/* Quick Action Shortcuts - Thumb Reach */}
       <div className="grid grid-cols-3 gap-2">
@@ -383,8 +400,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
               const status = getItemStatus(item);
               const isOut = status === 'OUT';
               const isLow = status === 'LOW';
-              const reorderQty = Math.max(item.minThreshold * 2 - item.currentStock, 5);
-              const supplierUrl = generateSupplierWhatsAppUrl(item, reorderQty);
+              const supplierUrl = generateSupplierWhatsAppUrl(item);
 
               return (
                 <div
@@ -405,16 +421,19 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                         {status}
                       </span>
                       <span className="text-xs font-bold text-slate-100 truncate max-w-[160px]">
-                        {item.name}
+                        {item.name}{item.brand ? ` (${item.brand})` : ''}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
                       <span className="font-mono text-cyan-300 font-semibold">
-                        {item.currentStock} {item.unit}
+                        {item.currentStock} {item.baseUnit || item.unit || 'units'}
+                        {item.sellingFormat === 'pack' && item.packContains && item.packContains > 1 && (
+                          <span className="text-slate-400 font-normal"> ({getSellingFormatQty(item)} pk)</span>
+                        )}
                       </span>
                       <span>·</span>
-                      <span className="text-slate-500 font-mono">Min safe: {item.minThreshold}</span>
+                      <span className="text-slate-500 font-mono">Min: {item.minThreshold}</span>
                     </div>
                   </div>
 
