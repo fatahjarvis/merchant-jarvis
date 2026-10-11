@@ -34,12 +34,12 @@ import {
 } from 'firebase/firestore';
 
 export const DEFAULT_ESTATE_CONFIG = {
-  apiKey: "AIzaSyAVJcp_rEw1sL-MmY8qJ5HThrD_v7ah8QQ",
-  authDomain: "gen-lang-client-0190121531.firebaseapp.com",
-  projectId: "gen-lang-client-0190121531",
-  storageBucket: "gen-lang-client-0190121531.firebasestorage.app",
-  messagingSenderId: "315581756161",
-  appId: "1:315581756161:web:293ba92696e09450c22100"
+  apiKey: "AIzaSyCok_O2OOpeaJ7_AKSLXWFHRPLniHxYCRs",
+  authDomain: "merchant-jarvis.firebaseapp.com",
+  projectId: "merchant-jarvis",
+  storageBucket: "merchant-jarvis.firebasestorage.app",
+  messagingSenderId: "531748300798",
+  appId: "1:531748300798:web:b89694415e54246e8f42af"
 };
 
 export const CONFIG_OVERRIDE_STORAGE_KEY = 'mjarvis_estate_config_override';
