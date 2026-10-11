@@ -253,7 +253,7 @@ export const DeviceLockScreen: React.FC<DeviceLockScreenProps> = ({
             {profile.shopName || 'Merchant Jarvis'}
           </h1>
           <p className="text-xs text-slate-400 font-mono mt-0.5">
-            Logixtix Estate · Protected Terminal
+            Logixtix · Your Protected Shop Terminal
           </p>
         </div>
       </div>

@@ -90,9 +90,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-100">Estate Authentication</h2>
-              {/* Cloud Veil: auth modal subtitle reads 'Estate Cloud · secure sync' */}
-              <p className="text-[11px] text-cyan-400/90 font-mono">Estate Cloud · secure sync</p>
+              <h2 className="text-base font-bold text-slate-100">Shop Cloud Sign-In</h2>
+              {/* Cloud Veil: auth modal subtitle reads 'Your shop, synced securely across your devices' */}
+              <p className="text-[11px] text-cyan-400/90 font-mono">Your shop, synced securely across your devices</p>
             </div>
           </div>
           <button 
@@ -240,7 +240,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 className="w-full py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm shadow-[0_0_12px_rgba(6,182,212,0.4)] transition"
                 style={{ minHeight: '44px' }}
               >
-                {mode === 'signin' ? 'Sign In to Estate' : 'Create Merchant Account'}
+                {mode === 'signin' ? 'Sign In to My Shop Cloud' : 'Create Merchant Account'}
               </button>
             </form>
 
@@ -250,14 +250,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 onClick={() => setMode(mode === 'signin' ? 'register' : 'signin')}
                 className="text-cyan-400 hover:underline"
               >
-                {mode === 'signin' ? 'Need an account? Register' : 'Already have an account? Sign in'}
+                {mode === 'signin' ? 'New shop? Create your login' : 'Already have an account? Sign in'}
               </button>
             </div>
 
             <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-900 text-[11px] text-slate-400 space-y-1">
-              <span className="text-teal-400 font-semibold block">Local-First Offline Fallback</span>
+              <span className="text-teal-400 font-semibold block">No internet? No problem.</span>
               <p>
-                Merchant Jarvis is fully usable offline. Any entries or orders made offline are queued locally and synchronized with Estate Cloud upon network reconnection.
+                Merchant Jarvis works fully offline. Orders and entries made offline wait safely on this device and sync when you reconnect.
               </p>
             </div>
           </div>

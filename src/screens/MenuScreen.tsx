@@ -503,7 +503,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-200">CLOUD CHOICE & SESSIONS</h3>
-              <p className="text-[11px] text-slate-400">Select your tenancy posture & manage connected devices</p>
+              <p className="text-[11px] text-slate-400">Shop Cloud (hosted by Logixtix) posture & manage connected devices</p>
             </div>
           </div>
           <button
@@ -536,7 +536,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
             >
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-100">Estate Cloud</span>
+                  <span className="text-xs font-bold text-slate-100">Shop Cloud</span>
                   {cloudChoice === 'estate' && <CheckCircle className="w-3.5 h-3.5 text-cyan-400" />}
                 </div>
                 <p className="text-[11px] text-slate-400 leading-snug">
