@@ -204,12 +204,14 @@ export const DeviceLockScreen: React.FC<DeviceLockScreenProps> = ({
     setErrorMsg(null);
     try {
       await loginWithEmail(estateEmail, estatePass);
+      console.info('[telemetry] pin-reset success');
       // Success, move to new PIN setup
       setPinState('forgot_new_pin');
       setSetupStep('enter');
       setSetupPin('');
       setConfirmPin('');
     } catch (err: any) {
+      console.info('[telemetry] pin-reset failure');
       setErrorMsg(err.message || 'Estate sign-in failed. Please verify credentials.');
       triggerShake();
     } finally {
@@ -222,11 +224,13 @@ export const DeviceLockScreen: React.FC<DeviceLockScreenProps> = ({
     setIsVerifyingEstate(true);
     try {
       await loginWithGoogle();
+      console.info('[telemetry] pin-reset success');
       setPinState('forgot_new_pin');
       setSetupStep('enter');
       setSetupPin('');
       setConfirmPin('');
     } catch (err: any) {
+      console.info('[telemetry] pin-reset failure');
       setErrorMsg(err.message || 'Google Estate verification failed.');
     } finally {
       setIsVerifyingEstate(false);
@@ -253,7 +257,7 @@ export const DeviceLockScreen: React.FC<DeviceLockScreenProps> = ({
             {profile.shopName || 'Merchant Jarvis'}
           </h1>
           <p className="text-xs text-slate-400 font-mono mt-0.5">
-            Logixtix · Your Protected Shop Terminal
+            Logixtix Marketing Ltd · Your Protected Shop Terminal
           </p>
         </div>
       </div>

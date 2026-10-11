@@ -503,7 +503,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-200">CLOUD CHOICE & SESSIONS</h3>
-              <p className="text-[11px] text-slate-400">Shop Cloud (hosted by Logixtix) posture & manage connected devices</p>
+              <p className="text-[11px] text-slate-400">Shop Cloud (hosted by Logixtix Marketing Ltd) posture & manage connected devices</p>
             </div>
           </div>
           <button
@@ -1421,6 +1421,9 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
             {MJARVIS_SHOWROOM} <ExternalLink className="w-3 h-3 inline" />
           </a>{' '}
           showroom.
+        </p>
+        <p className="text-[11px] text-slate-400 font-mono mt-2 italic">
+          Shops are opened by Logixtix Marketing Ltd: account created, licence key minted, credentials handed over in person or by WhatsApp.
         </p>
         <p className="text-[11px] text-slate-300 font-mono mt-2">
           Portal sign-in: <a href="https://jarvismu.com/login" target="_blank" rel="noopener" className="text-cyan-400 underline">jarvismu.com/login</a>

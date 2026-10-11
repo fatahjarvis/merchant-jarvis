@@ -33,7 +33,6 @@ import {
   googleProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
   fbSignOut, 
   onAuthStateChanged,
   doc,
@@ -158,7 +157,6 @@ interface StoreContextType {
   // Auth & Cloud Merge actions
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
-  registerWithEmail: (email: string, pass: string) => Promise<void>;
   logout: () => Promise<void>;
   pendingCloudMerge: { ordersCount: number; ledgerCount: number; stockCount: number; user: User } | null;
   confirmCloudMerge: () => Promise<void>;
@@ -1691,10 +1689,6 @@ Logixtix Marketing Ltd · Mauritius
     await signInWithEmailAndPassword(auth, email, pass);
   }, []);
 
-  const registerWithEmail = useCallback(async (email: string, pass: string) => {
-    if (!auth) throw new Error("Estate Cloud auth not configured");
-    await createUserWithEmailAndPassword(auth, email, pass);
-  }, []);
 
   const logout = useCallback(async () => {
     if (!auth) return;
@@ -1762,7 +1756,6 @@ Logixtix Marketing Ltd · Mauritius
     resetToEstateCloudDefault,
     loginWithGoogle,
     loginWithEmail,
-    registerWithEmail,
     logout,
     pendingCloudMerge,
     confirmCloudMerge,
@@ -1833,7 +1826,6 @@ Logixtix Marketing Ltd · Mauritius
     resetToEstateCloudDefault,
     loginWithGoogle,
     loginWithEmail,
-    registerWithEmail,
     logout,
     pendingCloudMerge,
     confirmCloudMerge,

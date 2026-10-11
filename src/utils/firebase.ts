@@ -18,7 +18,6 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
   signOut as fbSignOut, 
   onAuthStateChanged,
   User,
@@ -208,7 +207,6 @@ export function getMailOutboxDocRef(mailId: string) {
 export {
   signInWithPopup,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   fbSignOut,
   onAuthStateChanged,
   doc,
