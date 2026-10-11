@@ -1,12 +1,16 @@
 /**
  * Merchant Jarvis Estate Cloud Integration
- * Estate config verbatim:
- * apiKey AIzaSyAVJcp_rEw1sL-MmY8qJ5HThrD_v7ah8QQ;
- * authDomain gen-lang-client-0190121531.firebaseapp.com;
- * projectId gen-lang-client-0190121531;
- * storageBucket gen-lang-client-0190121531.firebasestorage.app;
- * messagingSenderId 315581756161;
- * appId 1:315581756161:web:293ba92696e09450c22100.
+ * Estate config verbatim (merchant-jarvis project,
+ * born 11 Oct 2026 under the fatahjarvis passport):
+ * apiKey AIzaSyCok_02Z00peaJ7_AKSLXWFHRPLniHxYCRS;
+ * authDomain merchant-jarvis.firebaseapp.com;
+ * projectId merchant-jarvis;
+ * storageBucket merchant-jarvis.firebasestorage.app;
+ * messagingSenderId 531748300798;
+ * appId 1:531748300798:web:b89694415e54246e8f42af.
+ * Former home gen-lang-client-0190121531 retired for this
+ * product 11 Oct 2026; the FATAH vault remains there in its
+ * named room, untouched.
  */
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { 
