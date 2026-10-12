@@ -503,7 +503,7 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-200">CLOUD CHOICE & SESSIONS</h3>
-              <p className="text-[11px] text-slate-400">Shop Cloud (hosted by Logixtix Marketing Ltd) posture & manage connected devices</p>
+              <p className="text-[11px] text-slate-400">Shop Cloud (hosted by Logixtix Marketing Ltd)</p>
             </div>
           </div>
           <button

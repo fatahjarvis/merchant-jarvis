@@ -212,7 +212,7 @@ export const DeviceLockScreen: React.FC<DeviceLockScreenProps> = ({
       setConfirmPin('');
     } catch (err: any) {
       console.info('[telemetry] pin-reset failure');
-      setErrorMsg(err.message || 'Estate sign-in failed. Please verify credentials.');
+      setErrorMsg('Verification failed — check email and password, or use Google');
       triggerShake();
     } finally {
       setIsVerifyingEstate(false);
@@ -231,7 +231,7 @@ export const DeviceLockScreen: React.FC<DeviceLockScreenProps> = ({
       setConfirmPin('');
     } catch (err: any) {
       console.info('[telemetry] pin-reset failure');
-      setErrorMsg(err.message || 'Google Estate verification failed.');
+      setErrorMsg('Verification failed — check email and password, or use Google');
     } finally {
       setIsVerifyingEstate(false);
     }
